@@ -18,13 +18,17 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-
-#include "System.h"
-#include "Converter.h"
 #include <thread>
 #include <pangolin/pangolin.h>
 #include <iomanip>
+
+#include "System.h"
+#include "Converter.h"
+#include "Tracking.h"
+#include "LocalMapping.h"
+#include "FrameDrawer.h"
+#include "Viewer.h"
+
 
 namespace ORB_SLAM2
 {

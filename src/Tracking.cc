@@ -27,15 +27,14 @@
 #include"ORBmatcher.h"
 #include"FrameDrawer.h"
 #include"Converter.h"
-#include"Map.h"
 #include"Initializer.h"
-
 #include"Optimizer.h"
 #include"PnPsolver.h"
+#include "IMapDrawer.h"
+#include "System.h"
+#include "Viewer.h"
 
 #include<iostream>
-
-#include<mutex>
 
 
 using namespace std;
@@ -43,7 +42,14 @@ using namespace std;
 namespace ORB_SLAM2
 {
 
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Map *pMap, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor):
+Tracking::Tracking(System *pSys,
+                   ORBVocabulary *pVoc,
+                   FrameDrawer *pFrameDrawer,
+                   IMapDrawer *pMapDrawer,
+                   Map *pMap,
+                   KeyFrameDatabase *pKFDB,
+                   const string &strSettingPath,
+                   const int sensor):
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpMap(pMap), mnLastRelocFrameId(0)
