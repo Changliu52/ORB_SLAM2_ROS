@@ -39,7 +39,7 @@ class Map;
 class LocalMapping;
 class LoopClosing;
 class System;
-class IMapDrawer;
+class IMapPublisher;
 class ORBextractor;
 class KeyFrameDatabase;
 class Initializer;
@@ -49,7 +49,7 @@ class Tracking
 {  
 
 public:
-    Tracking(System *pSys, ORBVocabulary *pVoc, FrameDrawer *pFrameDrawer, IMapDrawer *pMapDrawer, Map *pMap,
+    Tracking(System *pSys, ORBVocabulary *pVoc, FrameDrawer *pFrameDrawer, IMapPublisher *pMapPublisher, Map *pMap,
              KeyFrameDatabase *pKFDB, const string &strSettingPath, const int sensor);
 
     // Preprocess the input and call Track(). Extract features and performs stereo matching.
@@ -171,7 +171,7 @@ protected:
     //Drawers
     Viewer* mpViewer;
     FrameDrawer* mpFrameDrawer;
-    IMapDrawer* mpMapDrawer;
+    IMapPublisher* mpMapPublisher;
 
     //Map
     Map* mpMap;

@@ -30,7 +30,7 @@
 #include"Initializer.h"
 #include"Optimizer.h"
 #include"PnPsolver.h"
-#include "IMapDrawer.h"
+#include "IMapPublisher.h"
 #include "System.h"
 #include "Viewer.h"
 
@@ -45,14 +45,14 @@ namespace ORB_SLAM2
 Tracking::Tracking(System *pSys,
                    ORBVocabulary *pVoc,
                    FrameDrawer *pFrameDrawer,
-                   IMapDrawer *pMapDrawer,
+                   IMapPublisher *pMapPublisher,
                    Map *pMap,
                    KeyFrameDatabase *pKFDB,
                    const string &strSettingPath,
                    const int sensor):
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys),
-    mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpMap(pMap), mnLastRelocFrameId(0)
+    mpFrameDrawer(pFrameDrawer), mpMapPublisher(pMapPublisher), mpMap(pMap), mnLastRelocFrameId(0)
 {
     // Load camera parameters from settings file
 
@@ -437,7 +437,7 @@ void Tracking::Track()
             else
                 mVelocity = cv::Mat();
 
-            mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+            mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
             // Clean temporal point matches
             for(int i=0; i<mCurrentFrame.N; i++)
@@ -560,7 +560,7 @@ void Tracking::StereoInitialization()
 
         mpMap->mvpKeyFrameOrigins.push_back(pKFini);
 
-        mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+        mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
         mState=OK;
     }
@@ -737,7 +737,7 @@ void Tracking::CreateInitialMapMonocular()
 
     mpMap->SetReferenceMapPoints(mvpLocalMapPoints);
 
-    mpMapDrawer->SetCurrentCameraPose(pKFcur->GetPose());
+    mpMapPublisher->SetCurrentCameraPose(pKFcur->GetPose());
 
     mpMap->mvpKeyFrameOrigins.push_back(pKFini);
 

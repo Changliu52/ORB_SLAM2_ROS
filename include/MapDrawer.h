@@ -24,13 +24,13 @@
 #include"Map.h"
 #include"MapPoint.h"
 #include"KeyFrame.h"
-#include "IMapDrawer.h"
+#include "IMapPublisher.h"
 #include<pangolin/pangolin.h>
 
 namespace ORB_SLAM2
 {
 
-class MapDrawer : public IMapDrawer
+class MapDrawer : public IMapPublisher
 {
 public:
     MapDrawer(Map* pMap, const string &strSettingPath);

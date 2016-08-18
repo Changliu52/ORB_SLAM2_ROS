@@ -12,10 +12,10 @@
 namespace ORB_SLAM2
 {
 
-class IMapDrawer
+class IMapPublisher
 {
 public:
-    IMapDrawer(Map* map) : mpMap(map) { }
+    IMapPublisher(Map* map) : mpMap(map) { }
 
     void SetCurrentCameraPose(const cv::Mat &Tcw);
     cv::Mat GetCameraPose();

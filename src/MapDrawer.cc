@@ -28,7 +28,7 @@ namespace ORB_SLAM2
 {
 
 
-MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath) : IMapDrawer(pMap)
+MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath) : IMapPublisher(pMap)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
