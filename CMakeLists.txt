@@ -53,7 +53,8 @@ src/Converter.cc
 src/MapPoint.cc
 src/KeyFrame.cc
 src/Map.cc
-        src/IMapPublisher.cc
+src/IMapPublisher.cc
+src/IPublisherThread.cc
 src/MapDrawer.cc
 src/Optimizer.cc
 src/PnPsolver.cc
@@ -62,7 +63,7 @@ src/KeyFrameDatabase.cc
 src/Sim3Solver.cc
 src/Initializer.cc
 src/Viewer.cc
-)
+        )
 
 target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}

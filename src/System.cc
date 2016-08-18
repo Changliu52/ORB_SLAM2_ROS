@@ -103,7 +103,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     if(bUseViewer)
         mptViewer = new thread(&Viewer::Run, mpViewer);
 
-    mpTracker->SetViewer(mpViewer);
+    mpTracker->SetPublisherThread(mpViewer);
 
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);

@@ -33,8 +33,7 @@
 #include "IMapPublisher.h"
 #include "System.h"
 #include "Viewer.h"
-
-#include<iostream>
+#include "IPublisherThread.h"
 
 
 using namespace std;
@@ -164,9 +163,9 @@ void Tracking::SetLoopClosing(LoopClosing *pLoopClosing)
     mpLoopClosing=pLoopClosing;
 }
 
-void Tracking::SetViewer(Viewer *pViewer)
+void Tracking::SetPublisherThread(IPublisherThread *pPubThread)
 {
-    mpViewer=pViewer;
+    mpPublisherThread = pPubThread;
 }
 
 
@@ -1524,10 +1523,10 @@ bool Tracking::Relocalization()
 
 void Tracking::Reset()
 {
-    mpViewer->RequestStop();
+    mpPublisherThread->RequestStop();
 
     cout << "System Reseting" << endl;
-    while(!mpViewer->isStopped())
+    while(!mpPublisherThread->isStopped())
         usleep(3000);
 
     // Reset Local Mapping
@@ -1563,7 +1562,7 @@ void Tracking::Reset()
     mlFrameTimes.clear();
     mlbLost.clear();
 
-    mpViewer->Release();
+    mpPublisherThread->Release();
 }
 
 void Tracking::ChangeCalibration(const string &strSettingPath)

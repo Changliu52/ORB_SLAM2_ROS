@@ -27,8 +27,7 @@ namespace ORB_SLAM2
 {
 
 Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath):
-    mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking),
-    mbFinishRequested(false), mbFinished(true), mbStopped(false), mbStopRequested(false)
+    mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
@@ -53,7 +52,7 @@ Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer
 
 void Viewer::Run()
 {
-    mbFinished = false;
+    SetFinish(false);
 
     pangolin::CreateWindowAndBind("ORB-SLAM2: Map Viewer",1024,768);
 
@@ -167,65 +166,5 @@ void Viewer::Run()
     SetFinish();
 }
 
-void Viewer::RequestFinish()
-{
-    unique_lock<mutex> lock(mMutexFinish);
-    mbFinishRequested = true;
-}
-
-bool Viewer::CheckFinish()
-{
-    unique_lock<mutex> lock(mMutexFinish);
-    return mbFinishRequested;
-}
-
-void Viewer::SetFinish()
-{
-    unique_lock<mutex> lock(mMutexFinish);
-    mbFinished = true;
-}
-
-bool Viewer::isFinished()
-{
-    unique_lock<mutex> lock(mMutexFinish);
-    return mbFinished;
-}
-
-void Viewer::RequestStop()
-{
-    unique_lock<mutex> lock(mMutexStop);
-    if(!mbStopped)
-        mbStopRequested = true;
-}
-
-bool Viewer::isStopped()
-{
-    unique_lock<mutex> lock(mMutexStop);
-    return mbStopped;
-}
-
-bool Viewer::Stop()
-{
-    unique_lock<mutex> lock(mMutexStop);
-    unique_lock<mutex> lock2(mMutexFinish);
-
-    if(mbFinishRequested)
-        return false;
-    else if(mbStopRequested)
-    {
-        mbStopped = true;
-        mbStopRequested = false;
-        return true;
-    }
-
-    return false;
-
-}
-
-void Viewer::Release()
-{
-    unique_lock<mutex> lock(mMutexStop);
-    mbStopped = false;
-}
 
 }
