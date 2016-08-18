@@ -53,6 +53,7 @@ src/Converter.cc
 src/MapPoint.cc
 src/KeyFrame.cc
 src/Map.cc
+src/IMapDrawer.cc
 src/MapDrawer.cc
 src/Optimizer.cc
 src/PnPsolver.cc

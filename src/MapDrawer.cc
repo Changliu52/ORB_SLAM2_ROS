@@ -28,7 +28,7 @@ namespace ORB_SLAM2
 {
 
 
-MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath):mpMap(pMap)
+MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath) : IMapDrawer(pMap)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
@@ -43,8 +43,8 @@ MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath):mpMap(pMap)
 
 void MapDrawer::DrawMapPoints()
 {
-    const vector<MapPoint*> &vpMPs = mpMap->GetAllMapPoints();
-    const vector<MapPoint*> &vpRefMPs = mpMap->GetReferenceMapPoints();
+    const vector<MapPoint*> &vpMPs = GetMap()->GetAllMapPoints();
+    const vector<MapPoint*> &vpRefMPs = GetMap()->GetReferenceMapPoints();
 
     set<MapPoint*> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
 
@@ -86,7 +86,7 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph)
     const float h = w*0.75;
     const float z = w*0.6;
 
-    const vector<KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    const vector<KeyFrame*> vpKFs = GetMap()->GetAllKeyFrames();
 
     if(bDrawKF)
     {
@@ -218,47 +218,39 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
     glPopMatrix();
 }
 
-
-void MapDrawer::SetCurrentCameraPose(const cv::Mat &Tcw)
-{
-    unique_lock<mutex> lock(mMutexCamera);
-    mCameraPose = Tcw.clone();
-}
-
 void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
 {
-    if(!mCameraPose.empty())
-    {
-        cv::Mat Rwc(3,3,CV_32F);
-        cv::Mat twc(3,1,CV_32F);
-        {
-            unique_lock<mutex> lock(mMutexCamera);
-            Rwc = mCameraPose.rowRange(0,3).colRange(0,3).t();
-            twc = -Rwc*mCameraPose.rowRange(0,3).col(3);
-        }
-
-        M.m[0] = Rwc.at<float>(0,0);
-        M.m[1] = Rwc.at<float>(1,0);
-        M.m[2] = Rwc.at<float>(2,0);
-        M.m[3]  = 0.0;
-
-        M.m[4] = Rwc.at<float>(0,1);
-        M.m[5] = Rwc.at<float>(1,1);
-        M.m[6] = Rwc.at<float>(2,1);
-        M.m[7]  = 0.0;
-
-        M.m[8] = Rwc.at<float>(0,2);
-        M.m[9] = Rwc.at<float>(1,2);
-        M.m[10] = Rwc.at<float>(2,2);
-        M.m[11]  = 0.0;
-
-        M.m[12] = twc.at<float>(0);
-        M.m[13] = twc.at<float>(1);
-        M.m[14] = twc.at<float>(2);
-        M.m[15]  = 1.0;
-    }
-    else
+    cv::Mat cameraPose = GetCameraPose();
+    
+    if(cameraPose.empty()) {
         M.SetIdentity();
+        return;
+    }
+
+    cv::Mat Rwc(3,3,CV_32F);
+    cv::Mat twc(3,1,CV_32F);
+    Rwc = cameraPose.rowRange(0,3).colRange(0,3).t();
+    twc = -Rwc* cameraPose.rowRange(0, 3).col(3);
+
+    M.m[0] = Rwc.at<float>(0,0);
+    M.m[1] = Rwc.at<float>(1,0);
+    M.m[2] = Rwc.at<float>(2,0);
+    M.m[3]  = 0.0;
+
+    M.m[4] = Rwc.at<float>(0,1);
+    M.m[5] = Rwc.at<float>(1,1);
+    M.m[6] = Rwc.at<float>(2,1);
+    M.m[7]  = 0.0;
+
+    M.m[8] = Rwc.at<float>(0,2);
+    M.m[9] = Rwc.at<float>(1,2);
+    M.m[10] = Rwc.at<float>(2,2);
+    M.m[11]  = 0.0;
+
+    M.m[12] = twc.at<float>(0);
+    M.m[13] = twc.at<float>(1);
+    M.m[14] = twc.at<float>(2);
+    M.m[15]  = 1.0;
 }
 
 } //namespace ORB_SLAM
