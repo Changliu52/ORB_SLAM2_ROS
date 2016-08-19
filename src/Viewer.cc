@@ -90,7 +90,7 @@ void Viewer::Run()
     bool bFollow = true;
     bool bLocalizationMode = false;
 
-    while(1)
+    while(WaitCycleStart())
     {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -150,21 +150,9 @@ void Viewer::Run()
             mpSystem->Reset();
             menuReset = false;
         }
-
-        if(Stop())
-        {
-            while(isStopped())
-            {
-                usleep(3000);
-            }
-        }
-
-        if(CheckFinish())
-            break;
     }
 
     SetFinish();
 }
-
 
 }

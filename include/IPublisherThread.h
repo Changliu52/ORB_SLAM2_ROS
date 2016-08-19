@@ -26,6 +26,8 @@ public:
     bool isFinished();
 
 protected:
+    bool WaitCycleStart();
+    
     bool Stop();
     bool CheckFinish();
     void SetFinish(bool value = true);

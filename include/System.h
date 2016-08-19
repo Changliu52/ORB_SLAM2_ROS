@@ -104,6 +104,8 @@ public:
     // SaveMap(const string &filename);
     // LoadMap(const string &filename);
 
+    Map* GetMap() { return mpMap; }
+
 private:
 
     // Input sensor

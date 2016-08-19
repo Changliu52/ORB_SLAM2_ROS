@@ -3,12 +3,14 @@
 //
 
 #include "IPublisherThread.h"
+#include <unistd.h>
 
 using namespace std;
 using namespace ORB_SLAM2;
 
+
 IPublisherThread::IPublisherThread() :
-    mbStopped(false), mbStopRequested(false),
+    mbStopRequested(false), mbStopped(false),
     mbFinishRequested(false), mbFinished(true)
 { }
 
@@ -76,3 +78,16 @@ void IPublisherThread::SetFinish(bool value)
     unique_lock<mutex> lock(mMutexFinish);
     mbFinished = value;
 }
+
+bool IPublisherThread::WaitCycleStart()
+{
+    if(Stop()) {
+        while(isStopped())
+            usleep(3000);
+    }
+
+    if (CheckFinish())
+    	return false;
+
+    return true;
+}	

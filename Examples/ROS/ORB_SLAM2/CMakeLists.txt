@@ -53,6 +53,7 @@ ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
 # Node for monocular camera
 rosbuild_add_executable(Mono
 src/ros_mono.cc
+src/ROSPublisher.cpp
 )
 
 target_link_libraries(Mono
