@@ -21,32 +21,33 @@
 #ifndef FRAMEDRAWER_H
 #define FRAMEDRAWER_H
 
-#include "Tracking.h"
-#include "MapPoint.h"
-#include "Map.h"
+#include "IFrameSubscriber.h"
+#include "IFrameDrawer.h"
 
 #include<opencv2/core/core.hpp>
 #include<opencv2/features2d/features2d.hpp>
 
+#include <vector>
 #include<mutex>
 
 
 namespace ORB_SLAM2
 {
 
+class Map;
 class Tracking;
 class Viewer;
 
-class FrameDrawer
+class FrameDrawer : public IFrameDrawer
 {
 public:
     FrameDrawer(Map* pMap);
 
     // Update info from the last processed frame.
-    void Update(Tracking *pTracker);
+    void Update(Tracking *pTracker) override;
 
     // Draw last processed frame.
-    cv::Mat DrawFrame();
+    cv::Mat DrawFrame() override;
 
 protected:
 
@@ -55,12 +56,12 @@ protected:
     // Info of the frame to be drawn
     cv::Mat mIm;
     int N;
-    vector<cv::KeyPoint> mvCurrentKeys;
-    vector<bool> mvbMap, mvbVO;
+    std::vector<cv::KeyPoint> mvCurrentKeys;
+    std::vector<bool> mvbMap, mvbVO;
     bool mbOnlyTracking;
     int mnTracked, mnTrackedVO;
-    vector<cv::KeyPoint> mvIniKeys;
-    vector<int> mvIniMatches;
+    std::vector<cv::KeyPoint> mvIniKeys;
+    std::vector<int> mvIniMatches;
     int mState;
 
     Map* mpMap;

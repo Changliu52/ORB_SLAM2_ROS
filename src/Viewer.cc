@@ -19,6 +19,12 @@
 */
 
 #include "Viewer.h"
+#include "IFrameDrawer.h"
+#include "MapDrawer.h"
+#include "Tracking.h"
+#include "System.h"
+#include "IPublisherThread.h"
+
 #include <pangolin/pangolin.h>
 
 #include <mutex>
@@ -26,8 +32,8 @@
 namespace ORB_SLAM2
 {
 
-Viewer::Viewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath):
-    mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking)
+Viewer::Viewer(System* pSystem, IFrameRenderer *pFrameRenderer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath):
+    mpSystem(pSystem), mpFrameRenderer(pFrameRenderer), mpMapDrawer(pMapDrawer), mpTracker(pTracking)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
@@ -132,7 +138,7 @@ void Viewer::Run()
 
         pangolin::FinishFrame();
 
-        cv::Mat im = mpFrameDrawer->DrawFrame();
+        cv::Mat im = mpFrameRenderer->DrawFrame();
         cv::imshow("ORB-SLAM2: Current Frame",im);
         cv::waitKey(mT);
 
@@ -152,6 +158,7 @@ void Viewer::Run()
         }
     }
 
+    pangolin::BindToContext("ORB-SLAM2: Map Viewer");
     SetFinish();
 }
 

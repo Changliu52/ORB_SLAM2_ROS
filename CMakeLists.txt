@@ -26,6 +26,7 @@ else()
    message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
+
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 find_package(OpenCV 2.4.3 REQUIRED)
@@ -41,29 +42,36 @@ ${Pangolin_INCLUDE_DIRS}
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-add_library(${PROJECT_NAME} SHARED
-src/System.cc
-src/Tracking.cc
-src/LocalMapping.cc
-src/LoopClosing.cc
-src/ORBextractor.cc
-src/ORBmatcher.cc
-src/FrameDrawer.cc
-src/Converter.cc
-src/MapPoint.cc
-src/KeyFrame.cc
-src/Map.cc
-src/IMapPublisher.cc
-src/IPublisherThread.cc
-src/MapDrawer.cc
-src/Optimizer.cc
-src/PnPsolver.cc
-src/Frame.cc
-src/KeyFrameDatabase.cc
-src/Sim3Solver.cc
-src/Initializer.cc
-src/Viewer.cc
-        )
+
+set(LIBRARY_SRCS src/System.cc
+  src/Tracking.cc
+  src/LocalMapping.cc
+  src/LoopClosing.cc
+  src/ORBextractor.cc
+  src/ORBmatcher.cc
+  src/FrameDrawer.cc
+  src/Converter.cc
+  src/MapPoint.cc
+  src/KeyFrame.cc
+  src/Map.cc
+  src/IMapPublisher.cc
+  src/IPublisherThread.cc
+  src/Optimizer.cc
+  src/PnPsolver.cc
+  src/Frame.cc
+  src/KeyFrameDatabase.cc
+  src/Sim3Solver.cc
+  src/Initializer.cc)
+
+if (ENABLE_GUI)
+  message(STATUS "GUI is enabled")
+  add_definitions(-DENABLE_GUI)
+  set(LIBRARY_SRCS ${LIBRARY_SRCS} src/Viewer.cc src/MapDrawer.cc include/IFrameSubscriber.h include/IFrameDrawer.h)
+else()
+  message(STATUS "GUI is disabled")
+endif()
+
+add_library(${PROJECT_NAME} SHARED ${LIBRARY_SRCS})
 
 target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}

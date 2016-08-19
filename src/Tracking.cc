@@ -43,15 +43,15 @@ namespace ORB_SLAM2
 
 Tracking::Tracking(System *pSys,
                    ORBVocabulary *pVoc,
-                   FrameDrawer *pFrameDrawer,
+                   IFrameSubscriber *pFrameSub,
                    IMapPublisher *pMapPublisher,
                    Map *pMap,
                    KeyFrameDatabase *pKFDB,
                    const string &strSettingPath,
-                   const int sensor):
+                   int sensor):
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys),
-    mpFrameDrawer(pFrameDrawer), mpMapPublisher(pMapPublisher), mpMap(pMap), mnLastRelocFrameId(0)
+    mpFrameSubscriber(pFrameSub), mpMapPublisher(pMapPublisher), mpMap(pMap), mnLastRelocFrameId(0)
 {
     // Load camera parameters from settings file
 
@@ -288,7 +288,7 @@ void Tracking::Track()
         else
             MonocularInitialization();
 
-        mpFrameDrawer->Update(this);
+        mpFrameSubscriber->Update(this);
 
         if(mState!=OK)
             return;
@@ -420,7 +420,7 @@ void Tracking::Track()
             mState=LOST;
 
         // Update drawer
-        mpFrameDrawer->Update(this);
+        mpFrameSubscriber->Update(this);
 
         // If tracking were good, check if we insert a keyframe
         if(bOK)

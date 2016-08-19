@@ -34,7 +34,7 @@ namespace ORB_SLAM2
 {
 
 class Viewer;
-class FrameDrawer;
+class IFrameSubscriber;
 class Map;
 class LocalMapping;
 class LoopClosing;
@@ -50,8 +50,8 @@ class Tracking
 {  
 
 public:
-    Tracking(System *pSys, ORBVocabulary *pVoc, FrameDrawer *pFrameDrawer, IMapPublisher *pMapPublisher, Map *pMap,
-             KeyFrameDatabase *pKFDB, const string &strSettingPath, const int sensor);
+    Tracking(System *pSys, ORBVocabulary *pVoc, IFrameSubscriber *pFrameSub, IMapPublisher *pMapPublisher, Map *pMap,
+             KeyFrameDatabase *pKFDB, const string &strSettingPath, int sensor);
 
     // Preprocess the input and call Track(). Extract features and performs stereo matching.
     cv::Mat GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight, const double &timestamp);
@@ -171,7 +171,7 @@ protected:
 
     //Drawers
     IPublisherThread* mpPublisherThread;
-    FrameDrawer* mpFrameDrawer;
+    IFrameSubscriber* mpFrameSubscriber;
     IMapPublisher* mpMapPublisher;
 
     //Map
