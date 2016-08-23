@@ -62,6 +62,9 @@ public:
     void SetLoopClosing(LoopClosing* pLoopClosing);
     void SetPublisherThread(IPublisherThread *pPubThread);
 
+    inline void SetFrameSubscriber(IFrameSubscriber* sub) { mpFrameSubscriber = sub; }
+    inline void SetMapPublisher(IMapPublisher *pub) { mpMapPublisher = pub; }
+
     // Load new settings
     // The focal lenght should be similar or scale prediction will fail when projecting points
     // TODO: Modify MapPoint::PredictScale to take into account focal lenght
@@ -69,7 +72,7 @@ public:
 
     // Use this function if you have deactivated local mapping and you only want to localize the camera.
     void InformOnlyTracking(const bool &flag);
-
+    
 
 public:
 

@@ -31,7 +31,6 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 find_package(OpenCV 2.4.3 REQUIRED)
 find_package(Eigen3 3.1.0 REQUIRED)
-find_package(Pangolin REQUIRED)
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
@@ -42,8 +41,8 @@ ${Pangolin_INCLUDE_DIRS}
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-
-set(LIBRARY_SRCS src/System.cc
+set(SRCS
+  src/System.cc
   src/Tracking.cc
   src/LocalMapping.cc
   src/LoopClosing.cc
@@ -55,6 +54,7 @@ set(LIBRARY_SRCS src/System.cc
   src/KeyFrame.cc
   src/Map.cc
   src/IMapPublisher.cc
+  src/DefaultImpls.cc
   src/IPublisherThread.cc
   src/Optimizer.cc
   src/PnPsolver.cc
@@ -63,23 +63,29 @@ set(LIBRARY_SRCS src/System.cc
   src/Sim3Solver.cc
   src/Initializer.cc)
 
+set(LIBS
+  ${OpenCV_LIBS}
+  ${EIGEN3_LIBS}
+  ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+  ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so)
+
 if (ENABLE_GUI)
   message(STATUS "GUI is enabled")
+
+  find_package(Pangolin REQUIRED)
   add_definitions(-DENABLE_GUI)
-  set(LIBRARY_SRCS ${LIBRARY_SRCS} src/Viewer.cc src/MapDrawer.cc include/IFrameSubscriber.h include/IFrameDrawer.h)
+
+  set(SRCS ${SRCS}
+    src/Viewer.cc
+    src/MapDrawer.cc)
+  set(LIBS ${LIBS} ${Pangolin_LIBRARIES})
+
 else()
   message(STATUS "GUI is disabled")
 endif()
 
-add_library(${PROJECT_NAME} SHARED ${LIBRARY_SRCS})
-
-target_link_libraries(${PROJECT_NAME}
-${OpenCV_LIBS}
-${EIGEN3_LIBS}
-${Pangolin_LIBRARIES}
-${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
-)
+add_library(${PROJECT_NAME} SHARED ${SRCS})
+target_link_libraries(${PROJECT_NAME} ${LIBS})
 
 # Build examples
 

@@ -4,21 +4,31 @@
 
 #include "ROSPublisher.h"
 #include "Map.h"
+#include "Tracking.h"
 
 #include <thread>
 
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/Image.h>
+#include <std_msgs/String.h>
+#include <cv_bridge/cv_bridge.h>
 
 using namespace ORB_SLAM2;
 
-ROSPublisher::ROSPublisher(Map *map, double frequency, std::string tf_name, std::string topic) :
+
+ROSPublisher::ROSPublisher(Map *map, IFrameDrawer *frameDrawer,
+                           double frequency, std::string tf_name, std::string ns) :
     map_(map),
-    pub_(nh_.advertise<sensor_msgs::PointCloud>(std::move(topic), 5)),
+    frameDrawer_(frameDrawer)
+    nh_(ns),
+    map_pub_(nh_.advertise<sensor_msgs::PointCloud>("map_updates", 5)),
+    frame_pub_(nh_.advertise<sensor_msgs::Image>("frame", 5)),
+    status_pub_(nh_.advertise<std_msgs::String>("status", 5)),
     pub_rate_(frequency),
     tf_name_(std::move(tf_name))
 {
-    ROS_INFO("Publishing map updates on %s", topic.c_str());
+    ROS_INFO("Publishing on namespace `%s`/{map_updates, frame, status}", ns.c_str());
 }
 
 void ROSPublisher::Run()
@@ -29,8 +39,6 @@ void ROSPublisher::Run()
     SetFinish(false);
 
     ROS_INFO("ROS publisher started");
-
-
 
     while (WaitCycleStart()) {
         sensor_msgs::PointCloud msg;
@@ -49,7 +57,7 @@ void ROSPublisher::Run()
             msg.points.push_back(msg_point);
         }
 
-        pub_.publish(msg);
+        map_pub_.publish(msg);
     }
 
     SetFinish(true);
@@ -62,4 +70,45 @@ bool ROSPublisher::WaitCycleStart()
 
     pub_rate_.sleep();
     return true;
+}
+
+static const char *stateDescription(Tracking::eTrackingState trackingState)
+{
+    switch (trackingState) {
+    case Tracking::SYSTEM_NOT_READY: return "System not ready";
+    case Tracking::NO_IMAGES_YET: return "No images yet";
+    case Tracking::NOT_INITIALIZED: return "Not initialized";
+    case Tracking::OK: return "Ok";
+    case Tracking::LOST: return "Tracking lost";
+    }
+
+    return "???";
+}
+
+void ROSPublisher::Update(Tracking *tracking)
+{
+    using namespace cv_bridge;
+    static std::mutex mutex;
+
+    if (tracking == nullptr)
+        return;
+
+    std_msgs::String status_msg;
+    status_msg.data = stateDescription(tracking->mLastProcessedState);
+    status_pub_.publish(status_msg);
+
+    // TODO: Make sure the camera TF is correctly aligned. See:
+    // <http://docs.ros.org/jade/api/sensor_msgs/html/msg/Image.html>
+
+    CvImagePtr cv_img;
+    std_msgs::Header hdr;
+    hdr.frame_id = tf_name_;
+
+    {
+        std::unique_lock<std::mutex> lk{mutex};
+        cv_img = CvImagePtr {new CvImage(hdr, "mono8", tracking->mImGray)};
+    }
+
+    auto image_msg = cv_img->toImageMsg();
+    frame_pub_.publish(*image_msg);
 }

@@ -13,7 +13,7 @@ namespace ORB_SLAM2
     class IFrameSubscriber
     {
     public:
-	virtual void Update(Tracking*) {}
+	virtual void Update(Tracking*);
     };
 }
 

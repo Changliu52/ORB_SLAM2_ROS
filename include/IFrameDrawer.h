@@ -14,12 +14,13 @@ namespace ORB_SLAM2
 class IFrameRenderer
 {
 public:
-    virtual cv::Mat DrawFrame() {
-	return cv::Mat {0, 0,CV_8UC3, cv::Scalar(0,0,0)};
-    }
+    virtual cv::Mat DrawFrame();
 };
 
-class IFrameDrawer : public IFrameRenderer, public IFrameSubscriber {};
+class IFrameDrawer :
+    public IFrameRenderer,
+    public IFrameSubscriber
+{};
 
 }
 
