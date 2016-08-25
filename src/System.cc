@@ -25,28 +25,59 @@
 #include "Converter.h"
 #include "Tracking.h"
 #include "LocalMapping.h"
-#include "KeyFrameDatabase.h"
-#include "ORBVocabulary.h"
 
-#ifdef ENABLE_GUI
-#	include "FrameDrawer.h"
-#	include "MapDrawer.h"
-#	include "Viewer.h"
-#else
-#	include "IFrameSubscriber.h"
-#	include "IFrameDrawer.h"
-#	include "IMapPublisher.h"
-#	include "DummyPublisher.h"
-#endif
+#include "IFrameSubscriber.h"
+#include "IFrameDrawer.h"
+#include "IMapPublisher.h"
+#include "Failure.h"
 
+#include "utils.h"
 
 namespace ORB_SLAM2
 {
 
-System::System(const string &strVocFile, const string &strSettingsFile, eSensor sensor,
-               bool bUseViewer):mSensor(sensor),mbReset(false),mbActivateLocalizationMode(false),
-        mbDeactivateLocalizationMode(false)
+System::IBuilder::~IBuilder() { }
+
+System::GenericBuilder::GenericBuilder(const std::string &strVocFile,
+                                       const std::string &strSettingsFile,
+                                       eSensor sensor) :
+    mSensor(sensor),
+    mSettings(strSettingsFile.c_str(), cv::FileStorage::READ)
 {
+    if (!mSettings.isOpened())
+        throw Failure(std::string("Failed to open settings file at: ") + strSettingsFile);
+
+    if (!mVocabulary.loadFromTextFile(strVocFile))
+        throw Failure(std::string("Failed to load vocabulary at: ") + strVocFile);
+
+    mpKeyFrameDatabase = make_unique<KeyFrameDatabase>(mVocabulary);
+    mpMap = make_unique<Map>();
+    mpTracker = make_unique<Tracking>(&mVocabulary, mpMap.get(), mpKeyFrameDatabase.get(), strSettingsFile, mSensor);
+    mpLocalMapper = make_unique<LocalMapping>(mpMap.get(), mSensor == MONOCULAR);
+    mpLoopCloser = make_unique<LoopClosing>(mpMap.get(), mpKeyFrameDatabase.get(), &mVocabulary, mSensor != MONOCULAR);
+}
+
+System::GenericBuilder::~GenericBuilder() { }
+
+System::eSensor   System::GenericBuilder::GetSensorType() { return mSensor; }
+ORBVocabulary*    System::GenericBuilder::GetVocabulary() { return &mVocabulary; }
+KeyFrameDatabase* System::GenericBuilder::GetKeyFrameDatabase() { return mpKeyFrameDatabase.get(); }
+Map*              System::GenericBuilder::GetMap() { return mpMap.get(); }
+Tracking*         System::GenericBuilder::GetTracker() { return mpTracker.get(); }
+LocalMapping*     System::GenericBuilder::GetLocalMapper() { return mpLocalMapper.get(); }
+LoopClosing*      System::GenericBuilder::GetLoopCloser() { return mpLoopCloser.get(); }
+
+
+System::System(std::unique_ptr<IBuilder> builder)
+    : mpBuilder(std::move(builder)),
+      mSensor(mpBuilder->GetSensorType()),
+      mbStarted(false), mbReset(false),
+      mbActivateLocalizationMode(false),
+      mbDeactivateLocalizationMode(false)
+{
+    if (!mpBuilder)
+        throw std::invalid_argument("builder shouldn't be null");
+
     // Output welcome message
     cout << endl <<
     "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of Zaragoza." << endl <<
@@ -63,71 +94,18 @@ System::System(const string &strVocFile, const string &strSettingsFile, eSensor 
     else if(mSensor==RGBD)
         cout << "RGB-D" << endl;
 
-    //Check settings file
-    cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
-    if(!fsSettings.isOpened())
-    {
-       cerr << "Failed to open settings file at: " << strSettingsFile << endl;
-       exit(-1);
-    }
+    mpVocabulary = mpBuilder->GetVocabulary();
+    mpKeyFrameDatabase = mpBuilder->GetKeyFrameDatabase();
+    mpMap = mpBuilder->GetMap();
+    mpTracker = mpBuilder->GetTracker();
+    mpLocalMapper = mpBuilder->GetLocalMapper();
+    mpLoopCloser = mpBuilder->GetLoopCloser();
+    mpPublisher = mpBuilder->GetPublisher();
 
-
-    //Load ORB Vocabulary
-    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
-
-    mpVocabulary = new ORBVocabulary();
-    bool bVocLoad = mpVocabulary->loadFromTextFile(strVocFile);
-    if(!bVocLoad)
-    {
-        cerr << "Wrong path to vocabulary. " << endl;
-        cerr << "Falied to open at: " << strVocFile << endl;
-        exit(-1);
-    }
-    cout << "Vocabulary loaded!" << endl << endl;
-
-    //Create KeyFrame Database
-    mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
-
-    //Create the Map
-    mpMap = new Map();
-
-#ifdef ENABLE_GUI
-    mpFrameDrawer = new FrameDrawer(mpMap);
-    mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
-#else
-    mpFrameDrawer = new IFrameDrawer();
-    mpMapDrawer = new IMapPublisher(mpMap);
-#endif
-
-    
-    //Initialize the Tracking thread
-    //(it will live in the main thread of execution, the one that called this constructor)
-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
-
-    //Initialize the Local Mapping thread and launch
-    mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
-    mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
-
-    //Initialize the Loop Closing thread and launch
-    mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
-    mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
-
-#ifdef ENABLE_GUI
-    //Initialize the Viewer thread and launch
-    if(bUseViewer) {
-        mpPublisher = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
-        mptViewer = new thread(&IPublisherThread::Run, mpPublisher);
-    }
-#else
-    if (bUseViewer) {
-	mpPublisher = new DummyPublisher();
-	cerr << "WARNING: Program requested GUI, but GUI support wasn't compiled in this version of libORB_SLAM2\n";
-    }
-#endif
-    
     mpTracker->SetPublisherThread(mpPublisher);
 
+    mpPublisher->SetSystem(this);
+	
     //Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
     mpTracker->SetLoopClosing(mpLoopCloser);
@@ -137,6 +115,18 @@ System::System(const string &strVocFile, const string &strSettingsFile, eSensor 
 
     mpLoopCloser->SetTracker(mpTracker);
     mpLoopCloser->SetLocalMapper(mpLocalMapper);
+
+}
+
+void System::Start()
+{
+    if (mbStarted)
+        return;
+
+    mtLocalMapping = std::thread(&ORB_SLAM2::LocalMapping::Run, mpLocalMapper);
+    mtLoopClosing = std::thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
+    mtPublisher = std::thread(&ORB_SLAM2::IPublisherThread::Run, mpPublisher);
+    mbStarted = true;
 }
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
@@ -144,7 +134,7 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
     if(mSensor!=STEREO)
     {
         cerr << "ERROR: you called TrackStereo but input sensor was not set to STEREO." << endl;
-        exit(-1);
+        std::exit(-1);
     }   
 
     // Check mode change
@@ -153,12 +143,8 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
         if(mbActivateLocalizationMode)
         {
             mpLocalMapper->RequestStop();
-
             // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            mtLocalMapping.join();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
@@ -189,7 +175,7 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     if(mSensor!=RGBD)
     {
         cerr << "ERROR: you called TrackRGBD but input sensor was not set to RGBD." << endl;
-        exit(-1);
+        std::exit(-1);
     }    
 
     // Check mode change
@@ -200,10 +186,7 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
             mpLocalMapper->RequestStop();
 
             // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            mtLocalMapping.join();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;
@@ -234,7 +217,7 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     if(mSensor!=MONOCULAR)
     {
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
-        exit(-1);
+        std::exit(-1);
     }
 
     // Check mode change
@@ -243,12 +226,8 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
         if(mbActivateLocalizationMode)
         {
             mpLocalMapper->RequestStop();
-
             // Wait until Local Mapping has effectively stopped
-            while(!mpLocalMapper->isStopped())
-            {
-                usleep(1000);
-            }
+            mtLocalMapping.join();
 
             mpTracker->InformOnlyTracking(true);
             mbActivateLocalizationMode = false;

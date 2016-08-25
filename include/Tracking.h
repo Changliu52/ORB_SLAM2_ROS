@@ -27,8 +27,6 @@
 
 #include"Frame.h"
 
-#include <mutex>
-
 
 namespace ORB_SLAM2
 {
@@ -50,8 +48,11 @@ class Tracking
 {  
 
 public:
-    Tracking(System *pSys, ORBVocabulary *pVoc, IFrameSubscriber *pFrameSub, IMapPublisher *pMapPublisher, Map *pMap,
-             KeyFrameDatabase *pKFDB, const string &strSettingPath, int sensor);
+    Tracking(ORBVocabulary *pVoc,
+                 Map *pMap,
+                 KeyFrameDatabase *pKFDB,
+                 const string &strSettingPath,
+                 int sensor);
 
     // Preprocess the input and call Track(). Extract features and performs stereo matching.
     cv::Mat GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight, const double &timestamp);
@@ -62,6 +63,7 @@ public:
     void SetLoopClosing(LoopClosing* pLoopClosing);
     void SetPublisherThread(IPublisherThread *pPubThread);
 
+    inline void SetSystem(System *sys) { mpSystem = sys; }
     inline void SetFrameSubscriber(IFrameSubscriber* sub) { mpFrameSubscriber = sub; }
     inline void SetMapPublisher(IMapPublisher *pub) { mpMapPublisher = pub; }
 

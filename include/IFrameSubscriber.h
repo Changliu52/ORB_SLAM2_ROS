@@ -8,13 +8,13 @@
 
 namespace ORB_SLAM2
 {
-    class Tracking;
+class Tracking;
 
-    class IFrameSubscriber
-    {
-    public:
-	virtual void Update(Tracking*);
-    };
+class IFrameSubscriber
+{
+public:
+    virtual void Update(Tracking *);
+};
 }
 
 #endif //ORB_SLAM2_IFRAMESUBSCRIBER_H

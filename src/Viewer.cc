@@ -32,8 +32,8 @@
 namespace ORB_SLAM2
 {
 
-Viewer::Viewer(System* pSystem, IFrameRenderer *pFrameRenderer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath):
-    mpSystem(pSystem), mpFrameRenderer(pFrameRenderer), mpMapDrawer(pMapDrawer), mpTracker(pTracking)
+Viewer::Viewer(IFrameRenderer *pFrameRenderer, MapDrawer *pMapDrawer, Tracking *pTracking, const std::string &strSettingPath)
+    : mpFrameRenderer(pFrameRenderer), mpMapDrawer(pMapDrawer), mpTracker(pTracking)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
@@ -117,14 +117,14 @@ void Viewer::Run()
             bFollow = false;
         }
 
-        if(menuLocalizationMode && !bLocalizationMode)
+        if(menuLocalizationMode && !bLocalizationMode && GetSystem())
         {
-            mpSystem->ActivateLocalizationMode();
+            GetSystem()->ActivateLocalizationMode();
             bLocalizationMode = true;
         }
-        else if(!menuLocalizationMode && bLocalizationMode)
+        else if(!menuLocalizationMode && bLocalizationMode && GetSystem())
         {
-            mpSystem->DeactivateLocalizationMode();
+            GetSystem()->DeactivateLocalizationMode();
             bLocalizationMode = false;
         }
 
@@ -148,12 +148,13 @@ void Viewer::Run()
             menuShowKeyFrames = true;
             menuShowPoints = true;
             menuLocalizationMode = false;
-            if(bLocalizationMode)
-                mpSystem->DeactivateLocalizationMode();
+            if(bLocalizationMode && GetSystem()) {
+                GetSystem()->DeactivateLocalizationMode();
+		GetSystem()->Reset();
+	    }
             bLocalizationMode = false;
             bFollow = true;
             menuFollowCamera = true;
-            mpSystem->Reset();
             menuReset = false;
         }
     }

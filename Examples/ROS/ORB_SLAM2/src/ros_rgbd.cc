@@ -32,7 +32,9 @@
 
 #include<opencv2/core/core.hpp>
 
-#include"../../../include/System.h"
+#include "System.h"
+#include "ROSPublisher.h"
+#include "utils.h"
 
 using namespace std;
 
@@ -59,7 +61,7 @@ int main(int argc, char **argv)
     }    
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::RGBD);
+    ORB_SLAM2::System SLAM(make_unique<ROSSystemBuilder>(argv[1], argv[2], ORB_SLAM2::System::RGBD, 1.0));
 
     ImageGrabber igb(&SLAM);
 
@@ -71,6 +73,7 @@ int main(int argc, char **argv)
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub,depth_sub);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD,&igb,_1,_2));
 
+    SLAM.Start();
     ros::spin();
 
     // Stop all threads

@@ -36,18 +36,16 @@ class System;
 class Viewer : public IPublisherThread
 {
 public:
-    Viewer(System *pSystem,
-           IFrameRenderer *pFrameRenderer,
+    Viewer(IFrameRenderer *pFrameRenderer,
            MapDrawer *pMapDrawer,
            Tracking *pTracking,
-           const string &strSettingPath);
+           const std::string &strSettingPath);
 
     // Main thread function. Draw points, keyframes, the current camera pose and the last processed
     // frame. Drawing is refreshed according to the camera fps. We use Pangolin.
     virtual void Run() override;
 
 private:
-    System* mpSystem;
     IFrameRenderer *mpFrameRenderer;
     MapDrawer* mpMapDrawer;
     Tracking* mpTracker;

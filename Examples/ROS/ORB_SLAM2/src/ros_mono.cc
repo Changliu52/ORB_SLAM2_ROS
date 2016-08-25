@@ -30,9 +30,9 @@
 
 #include<opencv2/core/core.hpp>
 
-#include"../../../include/System.h"
+#include "System.h"
 #include "ROSPublisher.h"
-
+#include "utils.h"
 
 using namespace std;
 
@@ -71,22 +71,18 @@ int main(int argc, char **argv)
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::MONOCULAR);
-
-    // send about 5 map updates per seconds
-    ROSPublisher publisher(SLAM.GetMap(), 1.0);
+    const double freq = 1.0;
+    ORB_SLAM2::System SLAM(make_unique<ROSSystemBuilder>(argv[1], argv[2], ORB_SLAM2::System::MONOCULAR, freq));
 
     ImageGrabber igb {&SLAM};
     ros::NodeHandle nodeHandler;
     ros::Subscriber sub = nodeHandler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage, &igb);
 
-    std::thread pub_thread(&ROSPublisher::Run, &publisher);
-
+    SLAM.Start();
     ros::spin();
 
     // Stop all threads
     SLAM.Shutdown();
-    publisher.RequestFinish();
 
     // Save camera trajectory
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");

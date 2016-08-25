@@ -22,8 +22,8 @@
 #ifndef SYSTEM_H
 #define SYSTEM_H
 
-#include "KeyFrameDatabase.h"
 #include "ORBVocabulary.h"
+#include "IPublisherThread.h"
 
 #include<string>
 #include<thread>
@@ -34,14 +34,13 @@ namespace ORB_SLAM2
 {
 
 class IPublisherThread;
-class IFrameDrawer;
+class IFrameSubscriber;
 class IMapPublisher;
 class Map;
 class Tracking;
 class LocalMapping;
 class LoopClosing;
-
-
+class KeyFrameDatabase;
 
 class System
 {
@@ -53,10 +52,53 @@ public:
         RGBD=2
     };
 
-public:
+    // A `Builder`'s responsibility is to create, link together and destroy each individual
+    // part of a `System`.  The pure virtual methods are all supposed to be simple getters.
+    class IBuilder {
+    public:
+        virtual ~IBuilder();
+        virtual eSensor GetSensorType() = 0;
+        virtual ORBVocabulary* GetVocabulary() = 0;
+        virtual KeyFrameDatabase* GetKeyFrameDatabase() = 0;
+        virtual Map* GetMap() = 0;
+        virtual Tracking* GetTracker() = 0;
+        virtual LocalMapping* GetLocalMapper() = 0;
+        virtual LoopClosing* GetLoopCloser() = 0;
+        virtual IPublisherThread *GetPublisher() = 0;
+    };
 
-    // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
-    System(const std::string &strVocFile, const std::string &strSettingsFile, eSensor sensor, bool bUseViewer = true);
+    // This `IBuilder` implementation  constructs a system completely with the exception of
+    // the IPublisherThread and directly related objects (IFrameSubscriber, IMapPublisher).
+    // Since different Builders usually differ only by the class of those publishing objects,
+    // it's usually more practical to subclass this class instead of the IBuilder.
+    class GenericBuilder : public IBuilder {
+    public:
+        GenericBuilder(const std::string &strVocFile, const std::string &strSettingsFile, eSensor sensor);
+        virtual ~GenericBuilder();
+
+        virtual eSensor GetSensorType() override;
+        virtual ORBVocabulary *GetVocabulary() override;
+        virtual KeyFrameDatabase *GetKeyFrameDatabase() override;
+        virtual Map *GetMap() override;
+        virtual Tracking *GetTracker() override;
+        virtual LocalMapping *GetLocalMapper() override;
+        virtual LoopClosing *GetLoopCloser() override;
+
+    protected:
+        eSensor mSensor;
+        cv::FileStorage mSettings;
+        ORBVocabulary mVocabulary;
+        std::unique_ptr<KeyFrameDatabase> mpKeyFrameDatabase;
+        std::unique_ptr<Map> mpMap;
+        std::unique_ptr<Tracking> mpTracker;
+        std::unique_ptr<LocalMapping> mpLocalMapper;
+        std::unique_ptr<LoopClosing> mpLoopCloser;
+    };
+
+    // Creates the SLAM system.
+    // The created `System` object takes ownership of the passed `Builder`.
+    // The system will still need to be started by calling `System::Start()`.
+    System(std::unique_ptr<IBuilder> builder);
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
@@ -73,6 +115,8 @@ public:
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Returns the camera pose (empty if tracking fails).
     cv::Mat TrackMonocular(const cv::Mat &im, const double &timestamp);
+
+    void Start();
 
     // This stops local mapping thread (map building) and performs only camera tracking.
     void ActivateLocalizationMode();
@@ -107,12 +151,12 @@ public:
     // SaveMap(const string &filename);
     // LoadMap(const string &filename);
 
-    Map* GetMap() { return mpMap; }
-    
-private:
+protected:
+    // The `Builder` used to construct this `System`.
+    std::unique_ptr<IBuilder> mpBuilder;
 
     // Input sensor
-    eSensor mSensor;
+    const eSensor mSensor;
 
     // ORB vocabulary used for place recognition and feature matching.
     ORBVocabulary* mpVocabulary;
@@ -135,17 +179,14 @@ private:
     // a pose graph optimization and full bundle adjustment (in a new thread) afterwards.
     LoopClosing* mpLoopCloser;
 
-    // The viewer draws the map and the current camera pose. It uses Pangolin.
-    IPublisherThread* mpPublisher;
-
-    IFrameDrawer* mpFrameDrawer;
-    IMapPublisher* mpMapDrawer;
+    IPublisherThread *mpPublisher;
 
     // System threads: Local Mapping, Loop Closing, Viewer.
     // The Tracking thread "lives" in the main execution thread that creates the System object.
-    std::thread* mptLocalMapping;
-    std::thread* mptLoopClosing;
-    std::thread* mptViewer;
+    bool mbStarted;
+    std::thread mtLocalMapping;
+    std::thread mtLoopClosing;
+    std::thread mtPublisher;
 
     // Reset flag
     std::mutex mMutexReset;

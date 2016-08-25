@@ -26,10 +26,13 @@
 #include <unistd.h>
 
 #include<opencv2/core/core.hpp>
+#include<opencv2/highgui/highgui.hpp>
 
-#include<System.h>
+#include "GUISystemBuilder.h"
+#include "utils.h"
 
 using namespace std;
+using namespace ORB_SLAM2;
 
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
                 vector<string> &vstrImageFilenamesD, vector<double> &vTimestamps);
@@ -63,7 +66,8 @@ int main(int argc, char **argv)
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::RGBD);
+    System SLAM(make_unique<GUISystemBuilder>(argv[1], argv[2], System::RGBD));
+    SLAM.Start();
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;

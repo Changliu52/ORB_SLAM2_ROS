@@ -91,3 +91,10 @@ bool IPublisherThread::WaitCycleStart()
 
     return true;
 }	
+
+void IPublisherThread::SetSystem(System *sys)
+{
+    std::lock_guard<std::mutex> lock(mMutexMut);
+    mpSystem = sys;
+}
+

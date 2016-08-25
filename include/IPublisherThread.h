@@ -11,6 +11,8 @@
 namespace ORB_SLAM2
 {
 
+class System;
+
 class IPublisherThread
 {
 public:
@@ -19,6 +21,9 @@ public:
 
     virtual void Run() = 0;
 
+    void SetSystem(System *sys);
+    System* GetSystem() { return mpSystem; }
+    
     void RequestStop();
     bool isStopped();
     void Release();
@@ -40,6 +45,10 @@ private:
     bool mbFinishRequested;
     bool mbFinished;
     std::mutex mMutexFinish;
+
+    // Mutex for general object mutation
+    std::mutex mMutexMut;
+    System *mpSystem;
 };
 
 }

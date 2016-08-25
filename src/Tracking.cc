@@ -41,17 +41,14 @@ using namespace std;
 namespace ORB_SLAM2
 {
 
-Tracking::Tracking(System *pSys,
-                   ORBVocabulary *pVoc,
-                   IFrameSubscriber *pFrameSub,
-                   IMapPublisher *pMapPublisher,
+Tracking::Tracking(ORBVocabulary *pVoc,
                    Map *pMap,
                    KeyFrameDatabase *pKFDB,
                    const string &strSettingPath,
-                   int sensor):
+                   int sensor) :
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
-    mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys),
-    mpFrameSubscriber(pFrameSub), mpMapPublisher(pMapPublisher), mpMap(pMap), mnLastRelocFrameId(0)
+    mpKeyFrameDB(pKFDB), mpInitializer(nullptr), mpSystem(nullptr),
+    mpFrameSubscriber(nullptr), mpMapPublisher(nullptr), mpMap(pMap), mnLastRelocFrameId(0)
 {
     // Load camera parameters from settings file
 
@@ -288,7 +285,8 @@ void Tracking::Track()
         else
             MonocularInitialization();
 
-        mpFrameSubscriber->Update(this);
+	if (mpFrameSubscriber)
+	    mpFrameSubscriber->Update(this);
 
         if(mState!=OK)
             return;
@@ -420,7 +418,8 @@ void Tracking::Track()
             mState=LOST;
 
         // Update drawer
-        mpFrameSubscriber->Update(this);
+	if (mpFrameSubscriber)
+	    mpFrameSubscriber->Update(this);
 
         // If tracking were good, check if we insert a keyframe
         if(bOK)
@@ -436,7 +435,8 @@ void Tracking::Track()
             else
                 mVelocity = cv::Mat();
 
-            mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
+	    if (mpMapPublisher)
+		mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
             // Clean temporal point matches
             for(int i=0; i<mCurrentFrame.N; i++)
@@ -479,7 +479,7 @@ void Tracking::Track()
             if(mpMap->KeyFramesInMap()<=5)
             {
                 cout << "Track lost soon after initialisation, reseting..." << endl;
-                mpSystem->Reset();
+                if (mpSystem) mpSystem->Reset();
                 return;
             }
         }
@@ -559,7 +559,8 @@ void Tracking::StereoInitialization()
 
         mpMap->mvpKeyFrameOrigins.push_back(pKFini);
 
-        mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
+        if (mpMapPublisher)
+	    mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
         mState=OK;
     }
@@ -736,7 +737,8 @@ void Tracking::CreateInitialMapMonocular()
 
     mpMap->SetReferenceMapPoints(mvpLocalMapPoints);
 
-    mpMapPublisher->SetCurrentCameraPose(pKFcur->GetPose());
+    if (mpMapPublisher)
+	mpMapPublisher->SetCurrentCameraPose(pKFcur->GetPose());
 
     mpMap->mvpKeyFrameOrigins.push_back(pKFini);
 
