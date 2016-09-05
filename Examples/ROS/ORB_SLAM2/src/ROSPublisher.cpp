@@ -10,9 +10,10 @@
 
 #include <thread>
 #include <sstream>
+#include <cassert>
 
 #include <ros/ros.h>
-#include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/String.h>
@@ -21,14 +22,71 @@
 using namespace ORB_SLAM2;
 
 
-/// TODO Make `ROSPublisher` implement `IMapPublisher`
+static bool isBigEndian()
+{
+    volatile int num = 1;
+    return *((char*) &num) == ((char) 1);
+}
+
+static const bool IS_BIG_ENDIAN = isBigEndian();
+
+
+sensor_msgs::PointCloud2 convertToPCL2(ORB_SLAM2::Map *map)
+{
+    assert (map != nullptr);
+
+    const auto &map_points = map->GetAllMapPoints();
+    const std::size_t n_map_points = map_points.size();
+    ROS_INFO("sending PointCloud (%lu points)", n_map_points);
+
+    // Kind of a hack, but there aren't much better ways to avoid a copy
+    struct point { float x, y, z; };
+
+    std::vector<uint8_t> data_buffer(n_map_points * sizeof(point));
+    std::size_t vtop = 0;
+
+    point *dataptr = (point*) data_buffer.data();
+
+    for (MapPoint *map_point : map_points) {
+	if (map_point->isBad())
+	    continue;
+	cv::Mat pos = map_point->GetWorldPos();
+	dataptr[vtop++] = {
+	    pos.at<float>(0),
+	    pos.at<float>(1),
+	    pos.at<float>(2),
+	};
+    }
+
+    static const char* const names[3] = { "x", "y", "z" };
+    static const std::size_t offsets[3] = { offsetof(point, x), offsetof(point, y), offsetof(point, z) };
+    std::vector<sensor_msgs::PointField> fields(3);
+    for (int i=0; i < 3; i++) {
+	fields[i].name = names[i];
+	fields[i].offset = offsets[i];
+	fields[i].datatype = sensor_msgs::PointField::FLOAT32;
+	fields[i].count = 1;
+    }
+
+    sensor_msgs::PointCloud2 msg;
+    msg.height = 1;
+    msg.width = n_map_points;
+    msg.fields = fields;
+    msg.is_bigendian = IS_BIG_ENDIAN;
+    msg.point_step = sizeof(point);
+    msg.row_step = sizeof(point) * msg.width;
+    msg.data = std::move(data_buffer);
+    msg.is_dense = true;  // invalid points already filtered out
+
+    return msg;
+}
 
 
 ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency, std::string tf_name, std::string ns) :
     IMapPublisher(map),
     drawer_(GetMap()),
     nh_(ns),
-    map_pub_(nh_.advertise<sensor_msgs::PointCloud>("map_updates", 5)),
+    map_pub_(nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 5)),
     frame_pub_(nh_.advertise<sensor_msgs::Image>("frame", 5)),
     status_pub_(nh_.advertise<std_msgs::String>("status", 5)),
     camera_pose_pub_(nh_.advertise<geometry_msgs::PoseStamped>("pose", 5)),
@@ -49,28 +107,14 @@ void ROSPublisher::Run()
 
     std_msgs::Header hdr;
     hdr.frame_id = tf_name_;
-    
+
     while (WaitCycleStart()) {
-	sensor_msgs::PointCloud msg;
-        msg.header = hdr;
+	{
+	    auto msg = convertToPCL2(GetMap());
+	    msg.header = hdr;
+	    map_pub_.publish(msg);
+	}
 
-        const auto &map_points = GetMap()->GetAllMapPoints();
-	ROS_INFO("sending PointCloud (%lu points)", map_points.size());
-	
-        for (MapPoint *map_point: map_points) {
-            if (map_point->isBad())
-                continue;
-
-            cv::Mat pos = map_point->GetWorldPos();
-            geometry_msgs::Point32 msg_point;
-            msg_point.x = pos.at<float>(0);
-            msg_point.y = pos.at<float>(1);
-            msg_point.z = pos.at<float>(2);
-            msg.points.push_back(msg_point);
-        }
-
-        map_pub_.publish(msg);
-	
 	cv::Mat xf = GetCameraPose();
 	std::stringstream ss;
 	ss << xf;
@@ -129,7 +173,7 @@ void ROSPublisher::Update(Tracking *tracking)
     status_pub_.publish(status_msg);
 
     drawer_.Update(tracking);
-    
+
     // TODO: Make sure the camera TF is correctly aligned. See:
     // <http://docs.ros.org/jade/api/sensor_msgs/html/msg/Image.html>
 
@@ -159,5 +203,3 @@ IPublisherThread* ROSSystemBuilder::GetPublisher()
 {
     return mpPublisher.get();
 }
-
-
