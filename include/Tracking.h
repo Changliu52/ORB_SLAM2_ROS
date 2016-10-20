@@ -45,7 +45,7 @@ class Initializer;
 class KeyFrame;
 
 class Tracking
-{  
+{
 
 public:
     Tracking(ORBVocabulary *pVoc,
@@ -74,7 +74,8 @@ public:
 
     // Use this function if you have deactivated local mapping and you only want to localize the camera.
     void InformOnlyTracking(const bool &flag);
-    
+
+    inline const cv::Mat& GetVelocity() const { return mVelocity; }
 
 public:
 

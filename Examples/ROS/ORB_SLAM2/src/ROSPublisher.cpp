@@ -15,7 +15,8 @@
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Image.h>
-#include <geometry_msgs/PoseStamped.h>
+// #include <geometry_msgs/PoseStamped.h>
+#include <tf/transform_broadcaster.h>
 #include <std_msgs/String.h>
 #include <cv_bridge/cv_bridge.h>
 
@@ -30,12 +31,62 @@ static bool isBigEndian()
 
 static const bool IS_BIG_ENDIAN = isBigEndian();
 
+namespace std {
+    std::string to_string(const cv::Mat& mat) {
+	std::stringstream ss;
+	ss << mat;
+	return ss.str();
+    }
+}
 
-sensor_msgs::PointCloud2 convertToPCL2(ORB_SLAM2::Map *map)
+template<typename Q>
+Q convertToQuaternion(const cv::Mat& rot)
 {
-    assert (map != nullptr);
+    double trace = rot.at<float>(0,0) + rot.at<float>(1,1) + rot.at<float>(2,2);
+    double tmp[4];
 
-    const auto &map_points = map->GetAllMapPoints();
+    if (trace > 0.0) {
+	double s = sqrt(trace + 1.0);
+	tmp[3] = s * 0.5;
+	s = 0.5 / s;
+	tmp[0] = ((rot.at<float>(2,1) - rot.at<float>(1,2)) * s);
+	tmp[1] = ((rot.at<float>(0,2) - rot.at<float>(2,0)) * s);
+	tmp[2] = ((rot.at<float>(1,0) - rot.at<float>(0,1)) * s);
+    } else {
+	int i;
+	if (rot.at<float>(0, 0) < rot.at<float>(1,1))
+	    i = rot.at<float>(1,1) < rot.at<float>(2,2) ? 2 : 1;
+	else
+	    i = rot.at<float>(0,0) < rot.at<float>(2,2) ? 2 : 0;
+	int j = (i + 1) % 3;
+	int k = (i + 2) % 3;
+
+	double s = sqrt(rot.at<float>(i,i) - rot.at<float>(j,j) - rot.at<float>(k,k) + 1.0);
+	tmp[i] = s * 0.5;
+	s = 0.5 / s;
+	tmp[3] = (rot.at<float>(k,j) - rot.at<float>(j,k)) * s;
+	tmp[j] = (rot.at<float>(j,i) + rot.at<float>(i,j)) * s;
+	tmp[k] = (rot.at<float>(k,i) + rot.at<float>(i,k)) * s;
+    }
+
+    return {tmp[0], tmp[1], tmp[2], tmp[3]};
+}
+
+cv::Mat computeCameraTransform(const cv::Mat& Twc)
+{
+    cv::Mat ret = cv::Mat::eye(4, 4, CV_32F);
+
+    if(!Twc.empty()) {
+	auto Rwc = Twc.rowRange(0,3).colRange(0,3).t();
+	ret.rowRange(0,3).colRange(0,3) = Rwc;
+	// twc, the position
+	ret.rowRange(0,3).col(3) = -Rwc* Twc.rowRange(0, 3).col(3);
+    }
+    return ret;
+}
+
+sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
+{
     const std::size_t n_map_points = map_points.size();
     ROS_INFO("sending PointCloud (%lu points)", n_map_points);
 
@@ -82,18 +133,19 @@ sensor_msgs::PointCloud2 convertToPCL2(ORB_SLAM2::Map *map)
 }
 
 
-ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency, std::string tf_name, std::string ns) :
+ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
+			   std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
     IMapPublisher(map),
     drawer_(GetMap()),
-    nh_(ns),
-    map_pub_(nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 5)),
-    frame_pub_(nh_.advertise<sensor_msgs::Image>("frame", 5)),
-    status_pub_(nh_.advertise<std_msgs::String>("status", 5)),
-    camera_pose_pub_(nh_.advertise<geometry_msgs::PoseStamped>("pose", 5)),
-    pub_rate_(frequency),
-    tf_name_(std::move(tf_name))
+    nh_(std::move(nh)),
+    map_frame_name_(std::move(map_frame)),
+    camera_frame_name_(std::move(camera_frame)),
+    pub_rate_(frequency)
 {
-    ROS_INFO("Publishing on namespace `%s`/{map_updates, frame, status}", ns.c_str());
+    map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 5);
+    map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 2);
+    image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
+    status_pub_ = nh_.advertise<std_msgs::String>("status", 5);
 }
 
 void ROSPublisher::Run()
@@ -105,33 +157,32 @@ void ROSPublisher::Run()
 
     ROS_INFO("ROS publisher started");
 
-    std_msgs::Header hdr;
-    hdr.frame_id = tf_name_;
+    std_msgs::Header map_hdr;
+    map_hdr.frame_id = map_frame_name_;
 
     while (WaitCycleStart()) {
 	{
-	    auto msg = convertToPCL2(GetMap());
-	    msg.header = hdr;
+	    auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
+	    msg.header = map_hdr;
 	    map_pub_.publish(msg);
 	}
 
-	cv::Mat xf = GetCameraPose();
-	std::stringstream ss;
-	ss << xf;
-	ROS_INFO("Transform:\n%s\n", ss.str().c_str());
-	if (!xf.empty()) {
-	    geometry_msgs::PoseStamped pose_msg;
-	    pose_msg.header = hdr;
-	    pose_msg.pose.position.x = xf.at<double>(0, 3);
-	    pose_msg.pose.position.y = xf.at<double>(1, 3);
-	    pose_msg.pose.position.z = xf.at<double>(2, 3);
-	    double w = sqrt(1.0 + xf.at<double>(0, 0) + xf.at<double>(1, 1) + xf.at<double>(2, 2)) * 0.5;
-	    pose_msg.pose.orientation.w = w;
-	    pose_msg.pose.orientation.x = (xf.at<double>(2, 1) - xf.at<double>(1, 2)) / (4 * w);
-	    pose_msg.pose.orientation.y = (xf.at<double>(0, 2) - xf.at<double>(2, 0)) / (4 * w);
-	    pose_msg.pose.orientation.z = (xf.at<double>(1, 0) - xf.at<double>(0, 1)) / (4 * w);
-	    camera_pose_pub_.publish(pose_msg);
+	{
+	    auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
+	    msg.header = map_hdr;
+	    map_updates_pub_.publish(msg);
 	}
+
+	cv::Mat xf = computeCameraTransform(GetCameraPose());
+	if (xf.empty())
+	    continue;
+
+	tf::Vector3 position = { xf.at<float>(0, 3), xf.at<float>(1, 3), xf.at<float>(2, 3) };
+	auto orientation = convertToQuaternion<tf::Quaternion>(xf);
+	tf::StampedTransform transform(
+	    tf::Transform(orientation, position),
+	    ros::Time::now(), map_frame_name_, camera_frame_name_);
+	camera_tf_pub_.sendTransform(transform);
     }
 
     ROS_INFO("ROS publisher finished");
@@ -182,16 +233,20 @@ void ROSPublisher::Update(Tracking *tracking)
 
     auto image_msg = cv_img.toImageMsg();
     image_msg->header = hdr;
-    frame_pub_.publish(*image_msg);
+    image_pub_.publish(*image_msg);
 }
 
 ROSSystemBuilder::ROSSystemBuilder(const std::string& strVocFile,
-				   const std::string& strSettingsFile,
-				   ORB_SLAM2::System::eSensor sensor,
-				   double frequency, std::string tf_name, std::string ns) :
+                     const std::string& strSettingsFile,
+                     ORB_SLAM2::System::eSensor sensor,
+                     double frequency,
+                     ros::NodeHandle nh,
+		     std::string map_frame,
+                     std::string camera_frame) :
     System::GenericBuilder(strVocFile, strSettingsFile, sensor)
 {
-    mpPublisher = make_unique<ROSPublisher>(GetMap(), frequency, std::move(tf_name), std::move(ns));
+    mpPublisher = make_unique<ROSPublisher>(
+	GetMap(), frequency, std::move(map_frame), std::move(camera_frame), std::move(nh));
     mpTracker->SetFrameSubscriber(mpPublisher.get());
     mpTracker->SetMapPublisher(mpPublisher.get());
 }

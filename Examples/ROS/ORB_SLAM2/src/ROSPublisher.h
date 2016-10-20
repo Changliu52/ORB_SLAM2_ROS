@@ -15,6 +15,7 @@
 #include <mutex>
 
 #include <ros/ros.h>
+#include <tf/transform_broadcaster.h>
 
 namespace ORB_SLAM2 
 {
@@ -22,21 +23,22 @@ namespace ORB_SLAM2
     class Tracking;
 }
 
-
 class ROSPublisher :
     public ORB_SLAM2::IPublisherThread,
     public ORB_SLAM2::IMapPublisher,
     public ORB_SLAM2::IFrameSubscriber
 {
 public:
-    static constexpr const char *DEFAULT_TF_NAME = "map";
-    static constexpr const char *DEFAULT_NAMESPACE = "ORB_SLAM2";
+    static constexpr const char *DEFAULT_MAP_FRAME = "map";
+    static constexpr const char *DEFAULT_CAMERA_FRAME = "camera";
 
     // `frequency` is max amount of messages emitted per second
-    explicit ROSPublisher(ORB_SLAM2::Map *map, 
-                          double frequency,
-                          std::string tf_name = DEFAULT_TF_NAME,
-                          std::string ns = DEFAULT_NAMESPACE);
+    explicit ROSPublisher(
+	ORB_SLAM2::Map *map,
+	double frequency,
+	std::string map_frame = DEFAULT_MAP_FRAME,
+	std::string camera_frame = DEFAULT_CAMERA_FRAME,
+	ros::NodeHandle nh = ros::NodeHandle());
     
     virtual void Run() override;
     virtual void Update(ORB_SLAM2::Tracking*);
@@ -49,9 +51,10 @@ private:
 
     // Important: `nh_` goes before the `*_pub_`, because their construction relies on `nh_`!
     ros::NodeHandle nh_;
-    ros::Publisher map_pub_, frame_pub_, status_pub_, camera_pose_pub_;
+    std::string map_frame_name_, camera_frame_name_;
+    ros::Publisher map_pub_, map_updates_pub_, image_pub_, odom_pub_, status_pub_;
+    tf::TransformBroadcaster camera_tf_pub_;
     ros::Rate pub_rate_;
-    std::string tf_name_;
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {
@@ -60,8 +63,9 @@ public:
                      const std::string& strSettingsFile,
                      ORB_SLAM2::System::eSensor sensor,
                      double frequency,
-                     std::string tf_name = ROSPublisher::DEFAULT_TF_NAME,
-                     std::string ns = ROSPublisher::DEFAULT_NAMESPACE);
+                     ros::NodeHandle nh = ros::NodeHandle(),
+		     std::string map_frame = ROSPublisher::DEFAULT_MAP_FRAME,
+                     std::string camera_frame = ROSPublisher::DEFAULT_CAMERA_FRAME);
     virtual ~ROSSystemBuilder();
     
     virtual ORB_SLAM2::IPublisherThread* GetPublisher() override;
