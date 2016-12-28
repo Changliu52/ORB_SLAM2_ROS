@@ -1,0 +1,6 @@
+<launch>
+    <node pkg="ORB_SLAM2" type="Mono" name="Mono" args="../../../Vocabulary/ORBvoc.txt ../../Monocular/realsense_mono.yaml" cwd="node" output="screen">
+        <remap from="/camera/image_raw" to="/camera/color/image_raw" />
+    </node>
+</launch>
+
