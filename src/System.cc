@@ -33,6 +33,8 @@
 
 #include "utils.h"
 
+#include <unistd.h>
+
 namespace ORB_SLAM2
 {
 

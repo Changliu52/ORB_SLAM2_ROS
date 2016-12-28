@@ -35,6 +35,7 @@
 #include "Viewer.h"
 #include "IPublisherThread.h"
 
+#include <unistd.h>
 
 using namespace std;
 
