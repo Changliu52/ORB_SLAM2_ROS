@@ -143,7 +143,7 @@ Tracking::Tracking(ORBVocabulary *pVoc,
     if(sensor==System::RGBD)
     {
         mDepthMapFactor = fSettings["DepthMapFactor"];
-        if(mDepthMapFactor==0)
+        if(fabs(mDepthMapFactor)<1e-5)
             mDepthMapFactor=1;
         else
             mDepthMapFactor = 1.0f/mDepthMapFactor;
@@ -227,8 +227,8 @@ cv::Mat Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const d
             cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
     }
 
-    if(mDepthMapFactor!=1 || imDepth.type()!=CV_32F);
-    imDepth.convertTo(imDepth,CV_32F,mDepthMapFactor);
+    if((fabs(mDepthMapFactor-1.0f)>1e-5) || imDepth.type()!=CV_32F)
+        imDepth.convertTo(imDepth,CV_32F,mDepthMapFactor);
 
     mCurrentFrame = Frame(mImGray,imDepth,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
 
@@ -326,7 +326,7 @@ void Tracking::Track()
         }
         else
         {
-            // Only Tracking: Local Mapping is deactivated
+            // Localization Mode: Local Mapping is deactivated
 
             if(mState==LOST)
             {
@@ -439,7 +439,7 @@ void Tracking::Track()
 	    if (mpMapPublisher)
 		mpMapPublisher->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
-            // Clean temporal point matches
+            // Clean VO matches
             for(int i=0; i<mCurrentFrame.N; i++)
             {
                 MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
@@ -816,7 +816,7 @@ void Tracking::UpdateLastFrame()
 
     mLastFrame.SetPose(Tlr*pRef->GetPose());
 
-    if(mnLastKeyFrameId==mLastFrame.mnId || mSensor==System::MONOCULAR)
+    if(mnLastKeyFrameId==mLastFrame.mnId || mSensor==System::MONOCULAR || !mbOnlyTracking)
         return;
 
     // Create "visual odometry" MapPoints
@@ -879,7 +879,7 @@ bool Tracking::TrackWithMotionModel()
     ORBmatcher matcher(0.9,true);
 
     // Update last frame pose according to its reference keyframe
-    // Create "visual odometry" points
+    // Create "visual odometry" points if in Localization Mode
     UpdateLastFrame();
 
     mCurrentFrame.SetPose(mVelocity*mLastFrame.mTcw);
@@ -1008,33 +1008,24 @@ bool Tracking::NeedNewKeyFrame()
     // Local Mapping accept keyframes?
     bool bLocalMappingIdle = mpLocalMapper->AcceptKeyFrames();
 
-    // Stereo & RGB-D: Ratio of close "matches to map"/"total matches"
-    // "total matches = matches to map + visual odometry matches"
-    // Visual odometry matches will become MapPoints if we insert a keyframe.
-    // This ratio measures how many MapPoints we could create if we insert a keyframe.
-    int nMap = 0;
-    int nTotal= 0;
+    // Check how many "close" points are being tracked and how many could be potentially created.
+    int nNonTrackedClose = 0;
+    int nTrackedClose= 0;
     if(mSensor!=System::MONOCULAR)
     {
         for(int i =0; i<mCurrentFrame.N; i++)
         {
             if(mCurrentFrame.mvDepth[i]>0 && mCurrentFrame.mvDepth[i]<mThDepth)
             {
-                nTotal++;
-                if(mCurrentFrame.mvpMapPoints[i])
-                    if(mCurrentFrame.mvpMapPoints[i]->Observations()>0)
-                        nMap++;
+                if(mCurrentFrame.mvpMapPoints[i] && !mCurrentFrame.mvbOutlier[i])
+                    nTrackedClose++;
+                else
+                    nNonTrackedClose++;
             }
         }
     }
-    else
-    {
-        // There are no visual odometry matches in the monocular case
-        nMap=1;
-        nTotal=1;
-    }
 
-    const float ratioMap = (float)nMap/fmax(1.0f,nTotal);
+    bool bNeedToInsertClose = (nTrackedClose<100) && (nNonTrackedClose>70);
 
     // Thresholds
     float thRefRatio = 0.75f;
@@ -1044,18 +1035,14 @@ bool Tracking::NeedNewKeyFrame()
     if(mSensor==System::MONOCULAR)
         thRefRatio = 0.9f;
 
-    float thMapRatio = 0.35f;
-    if(mnMatchesInliers>300)
-        thMapRatio = 0.20f;
-
     // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
     const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
     // Condition 1b: More than "MinFrames" have passed and Local Mapping is idle
     const bool c1b = (mCurrentFrame.mnId>=mnLastKeyFrameId+mMinFrames && bLocalMappingIdle);
     //Condition 1c: tracking is weak
-    const bool c1c =  mSensor!=System::MONOCULAR && (mnMatchesInliers<nRefMatches*0.25 || ratioMap<0.3f) ;
+    const bool c1c =  mSensor!=System::MONOCULAR && (mnMatchesInliers<nRefMatches*0.25 || bNeedToInsertClose) ;
     // Condition 2: Few tracked points compared to reference keyframe. Lots of visual odometry compared to map matches.
-    const bool c2 = ((mnMatchesInliers<nRefMatches*thRefRatio|| ratioMap<thMapRatio) && mnMatchesInliers>15);
+    const bool c2 = ((mnMatchesInliers<nRefMatches*thRefRatio|| bNeedToInsertClose) && mnMatchesInliers>15);
 
     if((c1a||c1b||c1c)&&c2)
     {
