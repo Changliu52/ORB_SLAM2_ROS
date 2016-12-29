@@ -11,6 +11,7 @@ void IMapPublisher::SetCurrentCameraPose(const cv::Mat &Tcw)
 {
     unique_lock<mutex> lock(mMutexCamera);
     mCameraPose = Tcw.clone();
+    mbCameraUpdated = true;
 }
 
 cv::Mat IMapPublisher::GetCameraPose()
@@ -19,3 +20,14 @@ cv::Mat IMapPublisher::GetCameraPose()
     return mCameraPose;
 }
 
+bool IMapPublisher::isCamUpdated()
+{
+    unique_lock<mutex> lock(mMutexCamera);
+    return mbCameraUpdated;
+}
+
+void IMapPublisher::ResetCamFlag()
+{
+    unique_lock<mutex> lock(mMutexCamera);
+    mbCameraUpdated = false;
+}

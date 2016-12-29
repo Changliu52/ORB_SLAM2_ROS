@@ -33,9 +33,9 @@ static const bool IS_BIG_ENDIAN = isBigEndian();
 
 namespace std {
     std::string to_string(const cv::Mat& mat) {
-	std::stringstream ss;
-	ss << mat;
-	return ss.str();
+        std::stringstream ss;
+        ss << mat;
+        return ss.str();
     }
 }
 
@@ -46,27 +46,27 @@ Q convertToQuaternion(const cv::Mat& rot)
     double tmp[4];
 
     if (trace > 0.0) {
-	double s = sqrt(trace + 1.0);
-	tmp[3] = s * 0.5;
-	s = 0.5 / s;
-	tmp[0] = ((rot.at<float>(2,1) - rot.at<float>(1,2)) * s);
-	tmp[1] = ((rot.at<float>(0,2) - rot.at<float>(2,0)) * s);
-	tmp[2] = ((rot.at<float>(1,0) - rot.at<float>(0,1)) * s);
+        double s = sqrt(trace + 1.0);
+        tmp[3] = s * 0.5;
+        s = 0.5 / s;
+        tmp[0] = ((rot.at<float>(2,1) - rot.at<float>(1,2)) * s);
+        tmp[1] = ((rot.at<float>(0,2) - rot.at<float>(2,0)) * s);
+        tmp[2] = ((rot.at<float>(1,0) - rot.at<float>(0,1)) * s);
     } else {
-	int i;
-	if (rot.at<float>(0, 0) < rot.at<float>(1,1))
-	    i = rot.at<float>(1,1) < rot.at<float>(2,2) ? 2 : 1;
-	else
-	    i = rot.at<float>(0,0) < rot.at<float>(2,2) ? 2 : 0;
-	int j = (i + 1) % 3;
-	int k = (i + 2) % 3;
+        int i;
+        if (rot.at<float>(0, 0) < rot.at<float>(1,1))
+            i = rot.at<float>(1,1) < rot.at<float>(2,2) ? 2 : 1;
+        else
+            i = rot.at<float>(0,0) < rot.at<float>(2,2) ? 2 : 0;
+        int j = (i + 1) % 3;
+        int k = (i + 2) % 3;
 
-	double s = sqrt(rot.at<float>(i,i) - rot.at<float>(j,j) - rot.at<float>(k,k) + 1.0);
-	tmp[i] = s * 0.5;
-	s = 0.5 / s;
-	tmp[3] = (rot.at<float>(k,j) - rot.at<float>(j,k)) * s;
-	tmp[j] = (rot.at<float>(j,i) + rot.at<float>(i,j)) * s;
-	tmp[k] = (rot.at<float>(k,i) + rot.at<float>(i,k)) * s;
+        double s = sqrt(rot.at<float>(i,i) - rot.at<float>(j,j) - rot.at<float>(k,k) + 1.0);
+        tmp[i] = s * 0.5;
+        s = 0.5 / s;
+        tmp[3] = (rot.at<float>(k,j) - rot.at<float>(j,k)) * s;
+        tmp[j] = (rot.at<float>(j,i) + rot.at<float>(i,j)) * s;
+        tmp[k] = (rot.at<float>(k,i) + rot.at<float>(i,k)) * s;
     }
 
     return {tmp[0], tmp[1], tmp[2], tmp[3]};
@@ -77,10 +77,10 @@ cv::Mat computeCameraTransform(const cv::Mat& Twc)
     cv::Mat ret = cv::Mat::eye(4, 4, CV_32F);
 
     if(!Twc.empty()) {
-	auto Rwc = Twc.rowRange(0,3).colRange(0,3).t();
-	ret.rowRange(0,3).colRange(0,3) = Rwc;
-	// twc, the position
-	ret.rowRange(0,3).col(3) = -Rwc* Twc.rowRange(0, 3).col(3);
+        auto Rwc = Twc.rowRange(0,3).colRange(0,3).t();
+        ret.rowRange(0,3).colRange(0,3) = Rwc;
+        // twc, the position
+        ret.rowRange(0,3).col(3) = -Rwc* Twc.rowRange(0, 3).col(3);
     }
     return ret;
 }
@@ -99,24 +99,24 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
     point *dataptr = (point*) data_buffer.data();
 
     for (MapPoint *map_point : map_points) {
-	if (map_point->isBad())
-	    continue;
-	cv::Mat pos = map_point->GetWorldPos();
-	dataptr[vtop++] = {
-	    pos.at<float>(0),
-	    pos.at<float>(1),
-	    pos.at<float>(2),
-	};
+        if (map_point->isBad())
+            continue;
+        cv::Mat pos = map_point->GetWorldPos();
+        dataptr[vtop++] = {
+            pos.at<float>(0),
+            pos.at<float>(1),
+            pos.at<float>(2),
+        };
     }
 
     static const char* const names[3] = { "x", "y", "z" };
     static const std::size_t offsets[3] = { offsetof(point, x), offsetof(point, y), offsetof(point, z) };
     std::vector<sensor_msgs::PointField> fields(3);
     for (int i=0; i < 3; i++) {
-	fields[i].name = names[i];
-	fields[i].offset = offsets[i];
-	fields[i].datatype = sensor_msgs::PointField::FLOAT32;
-	fields[i].count = 1;
+        fields[i].name = names[i];
+        fields[i].offset = offsets[i];
+        fields[i].datatype = sensor_msgs::PointField::FLOAT32;
+        fields[i].count = 1;
     }
 
     sensor_msgs::PointCloud2 msg;
@@ -134,7 +134,7 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
 
 
 ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
-			   std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
+                std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
     IMapPublisher(map),
     drawer_(GetMap()),
     nh_(std::move(nh)),
@@ -161,28 +161,33 @@ void ROSPublisher::Run()
     map_hdr.frame_id = map_frame_name_;
 
     while (WaitCycleStart()) {
-	{
-	    auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
-	    msg.header = map_hdr;
-	    map_pub_.publish(msg);
-	}
-
-	{
-	    auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
-	    msg.header = map_hdr;
-	    map_updates_pub_.publish(msg);
-	}
-
-	cv::Mat xf = computeCameraTransform(GetCameraPose());
-	if (xf.empty())
-	    continue;
-
-	tf::Vector3 position = { xf.at<float>(0, 3), xf.at<float>(1, 3), xf.at<float>(2, 3) };
-	auto orientation = convertToQuaternion<tf::Quaternion>(xf);
-	tf::StampedTransform transform(
-	    tf::Transform(orientation, position),
-	    ros::Time::now(), map_frame_name_, camera_frame_name_);
-	camera_tf_pub_.sendTransform(transform);
+        // only publish map, map updates and camera pose, if camera pose was updated
+        // TODO: maybe there is a way to check if the map was updated
+        if (isCamUpdated()) {
+            // map
+            {
+                auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
+                msg.header = map_hdr;
+                map_pub_.publish(msg);
+            }
+            // map updates
+            {
+                auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
+                msg.header = map_hdr;
+                map_updates_pub_.publish(msg);
+            }
+            // camera pose
+            cv::Mat xf = computeCameraTransform(GetCameraPose());
+            if (!xf.empty()) {
+                tf::Vector3 position = { xf.at<float>(0, 3), xf.at<float>(1, 3), xf.at<float>(2, 3) };
+                auto orientation = convertToQuaternion<tf::Quaternion>(xf);
+                tf::StampedTransform transform(
+                    tf::Transform(orientation, position),
+                    ros::Time::now(), map_frame_name_, camera_frame_name_);
+                camera_tf_pub_.sendTransform(transform);
+                ResetCamFlag();
+            }
+        }
     }
 
     ROS_INFO("ROS publisher finished");
@@ -217,7 +222,7 @@ void ROSPublisher::Update(Tracking *tracking)
     static std::mutex mutex;
 
     if (tracking == nullptr)
-	return;
+        return;
 
     std_msgs::String status_msg;
     status_msg.data = stateDescription(tracking->mLastProcessedState);
@@ -237,16 +242,16 @@ void ROSPublisher::Update(Tracking *tracking)
 }
 
 ROSSystemBuilder::ROSSystemBuilder(const std::string& strVocFile,
-                     const std::string& strSettingsFile,
-                     ORB_SLAM2::System::eSensor sensor,
-                     double frequency,
-                     ros::NodeHandle nh,
-		     std::string map_frame,
-                     std::string camera_frame) :
+                const std::string& strSettingsFile,
+                ORB_SLAM2::System::eSensor sensor,
+                double frequency,
+                ros::NodeHandle nh,
+                std::string map_frame,
+                std::string camera_frame) :
     System::GenericBuilder(strVocFile, strSettingsFile, sensor)
 {
     mpPublisher = make_unique<ROSPublisher>(
-	GetMap(), frequency, std::move(map_frame), std::move(camera_frame), std::move(nh));
+        GetMap(), frequency, std::move(map_frame), std::move(camera_frame), std::move(nh));
     mpTracker->SetFrameSubscriber(mpPublisher.get());
     mpTracker->SetMapPublisher(mpPublisher.get());
 }

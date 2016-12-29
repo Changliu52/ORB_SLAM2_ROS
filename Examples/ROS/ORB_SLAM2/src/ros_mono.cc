@@ -71,7 +71,7 @@ int main(int argc, char **argv)
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    const double freq = 5.0;
+    const double freq = 100.0;
     // Set up a namespace for topics
     ros::NodeHandle nh {"ORB_SLAM2"};
     ORB_SLAM2::System SLAM(

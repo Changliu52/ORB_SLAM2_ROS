@@ -20,11 +20,14 @@ public:
     void SetCurrentCameraPose(const cv::Mat &Tcw);
     cv::Mat GetCameraPose();
     Map *GetMap() { return mpMap; }
+    bool isCamUpdated();
+    void ResetCamFlag();
 
 private:
     cv::Mat mCameraPose;
     Map* mpMap;
     std::mutex mMutexCamera;
+    bool mbCameraUpdated;
 };
 
 }
