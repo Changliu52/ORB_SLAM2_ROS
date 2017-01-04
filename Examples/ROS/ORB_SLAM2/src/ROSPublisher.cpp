@@ -20,6 +20,15 @@
 #include <std_msgs/String.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <octomap/OcTree.h>
+#include <octomap/Pointcloud.h>
+#include <octomap/octomap.h>
+#include <octomap_msgs/conversions.h>
+
+
+#define DEFAULT_OCTOMAP_RESOLUTION 0.1
+
+
 using namespace ORB_SLAM2;
 
 
@@ -132,6 +141,21 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
     return msg;
 }
 
+void convertToOctoMap(const std::vector<MapPoint*> &map_points, octomap::OcTree &octomap)
+{
+    // first convert to point cloud
+    octomap::Pointcloud cloud;
+    for (MapPoint *map_point : map_points) {
+        if (map_point->isBad())
+            continue;
+        cv::Mat pos = map_point->GetWorldPos();
+        cloud.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
+    }
+
+    // convert point cloud to octomap
+    octomap.insertPointCloud(cloud, octomap::point3d());
+}
+
 
 ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
                 std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
@@ -146,6 +170,7 @@ ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
     map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 2);
     image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
     status_pub_ = nh_.advertise<std_msgs::String>("status", 5);
+    octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
 }
 
 void ROSPublisher::Run()
@@ -175,6 +200,18 @@ void ROSPublisher::Run()
                 auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
                 msg.header = map_hdr;
                 map_updates_pub_.publish(msg);
+            }
+            // octomap
+            {
+                octomap::OcTree octomap(DEFAULT_OCTOMAP_RESOLUTION);
+                convertToOctoMap(GetMap()->GetAllMapPoints(), octomap);
+                octomap_msgs::Octomap msgOctomap;
+                msgOctomap.header.frame_id = map_frame_name_;
+                msgOctomap.header.stamp = ros::Time::now();
+                if (octomap_msgs::binaryMapToMsg(octomap, msgOctomap))
+                {
+                    octomap_pub_.publish(msgOctomap);
+                }
             }
             // camera pose
             cv::Mat xf = computeCameraTransform(GetCameraPose());
