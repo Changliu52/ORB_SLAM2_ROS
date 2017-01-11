@@ -157,7 +157,17 @@ void integrateMapPoints(const std::vector<MapPoint*> &map_points, octomap::point
     }
 
     // integrate point cloud into octomap
-    octomap.insertPointCloud(cloud, origin);
+    try {
+        // with transformation to camera frame
+        tf::StampedTransform transform_in_target_frame;
+        tf_listener_.lookupTransform("ORB_base_link", camera_frame_name_, ros::Time(0) , transform_in_target_frame);
+        octomap::pose6d frame = octomap::poseTfToOctomap(transform_in_target_frame);
+
+        octomap.insertPointCloud(cloud, origin, frame);
+    } catch (tf::TransformException &ex) {
+        // without transformation
+        octomap.insertPointCloud(cloud, origin);
+    }
 }
 
 

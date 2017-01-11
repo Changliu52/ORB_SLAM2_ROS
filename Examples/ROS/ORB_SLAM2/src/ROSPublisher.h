@@ -36,11 +36,11 @@ public:
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
-	ORB_SLAM2::Map *map,
-	double frequency,
-	std::string map_frame = DEFAULT_MAP_FRAME,
-	std::string camera_frame = DEFAULT_CAMERA_FRAME,
-	ros::NodeHandle nh = ros::NodeHandle());
+        ORB_SLAM2::Map *map,
+        double frequency,
+        std::string map_frame = DEFAULT_MAP_FRAME,
+        std::string camera_frame = DEFAULT_CAMERA_FRAME,
+        ros::NodeHandle nh = ros::NodeHandle());
     
     virtual void Run() override;
     virtual void Update(ORB_SLAM2::Tracking*);
@@ -62,6 +62,8 @@ private:
     octomap::OcTree octomap_;
     tf::Vector3 camera_position_;
 
+    tf::TransformListener tf_listener_;
+
     bool updateOctoMap();
 };
 
@@ -72,7 +74,7 @@ public:
                      ORB_SLAM2::System::eSensor sensor,
                      double frequency,
                      ros::NodeHandle nh = ros::NodeHandle(),
-		     std::string map_frame = ROSPublisher::DEFAULT_MAP_FRAME,
+                     std::string map_frame = ROSPublisher::DEFAULT_MAP_FRAME,
                      std::string camera_frame = ROSPublisher::DEFAULT_CAMERA_FRAME);
     virtual ~ROSSystemBuilder();
     
