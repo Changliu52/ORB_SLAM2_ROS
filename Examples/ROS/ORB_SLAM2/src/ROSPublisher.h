@@ -10,12 +10,14 @@
 #include "IMapPublisher.h"
 #include "FrameDrawer.h"
 #include "System.h"
+#include "Map.h"
 
 #include <chrono>
 #include <mutex>
 
 #include <ros/ros.h>
 #include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
 
 #include <octomap/OcTree.h>
 
@@ -65,6 +67,7 @@ private:
     tf::TransformListener tf_listener_;
 
     bool updateOctoMap();
+    void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, octomap::point3d origin, octomap::OcTree &);
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {

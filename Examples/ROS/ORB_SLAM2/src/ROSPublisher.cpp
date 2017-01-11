@@ -4,7 +4,6 @@
 
 #include "ROSPublisher.h"
 #include "FrameDrawer.h"
-#include "Map.h"
 #include "Tracking.h"
 #include "utils.h"
 
@@ -23,6 +22,7 @@
 #include <octomap/Pointcloud.h>
 #include <octomap/octomap.h>
 #include <octomap_msgs/conversions.h>
+#include <octomap_ros/conversions.h>
 
 #include <chrono>
 
@@ -145,7 +145,7 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
 /*
  * Integrates a `map_points` scan originating from camera position `origin` into an `octomap`.
 */
-void integrateMapPoints(const std::vector<MapPoint*> &map_points, octomap::point3d origin, octomap::OcTree &octomap)
+void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, octomap::point3d origin, octomap::OcTree &octomap)
 {
     // first convert map points to point cloud
     octomap::Pointcloud cloud;
