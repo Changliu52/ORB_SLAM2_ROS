@@ -17,6 +17,8 @@
 #include <ros/ros.h>
 #include <tf/transform_broadcaster.h>
 
+#include <octomap/OcTree.h>
+
 namespace ORB_SLAM2 
 {
     class Map;
@@ -55,6 +57,12 @@ private:
     ros::Publisher map_pub_, map_updates_pub_, image_pub_, odom_pub_, status_pub_, octomap_pub_;
     tf::TransformBroadcaster camera_tf_pub_;
     ros::Rate pub_rate_;
+
+    int lastBigMapChange_;
+    octomap::OcTree octomap_;
+    tf::Vector3 camera_position_;
+
+    bool updateOctoMap();
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {
