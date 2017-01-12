@@ -47,6 +47,21 @@ ${PROJECT_SOURCE_DIR}/../../../Thirdparty/g2o/lib/libg2o.so
 ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
 )
 
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  message_generation
+)
+
+# Generate messages in the 'msg' folder
+add_message_files(
+  FILES
+  ORBState.msg
+)
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
 # Node for monocular camera
 rosbuild_add_executable(Mono
 src/ros_mono.cc

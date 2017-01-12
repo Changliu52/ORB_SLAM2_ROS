@@ -17,6 +17,7 @@
 // #include <geometry_msgs/PoseStamped.h>
 #include <tf/transform_broadcaster.h>
 #include <std_msgs/String.h>
+#include <ORB_SLAM2/ORBState.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <octomap/Pointcloud.h>
@@ -182,10 +183,11 @@ ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
     lastBigMapChange_(-1),
     octomap_(DEFAULT_OCTOMAP_RESOLUTION)
 {
-    map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 5);
-    map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 2);
+    map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
+    map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
     image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
-    status_pub_ = nh_.advertise<std_msgs::String>("status", 5);
+    state_pub_ = nh_.advertise<ORB_SLAM2::ORBState>("state", 10);
+    state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
     octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
 }
 
@@ -310,9 +312,17 @@ void ROSPublisher::Update(Tracking *tracking)
     if (tracking == nullptr)
         return;
 
-    std_msgs::String status_msg;
-    status_msg.data = stateDescription(tracking->mLastProcessedState);
-    status_pub_.publish(status_msg);
+    // publish state as ORBState int
+    ORB_SLAM2::ORBState state_msg;
+    state_msg.header.seq++;
+    state_msg.header.stamp = ros::Time::now();
+    state_msg.state = static_cast<uint16_t>(tracking->mState);
+    state_pub_.publish(state_msg);
+
+    // publish state as string
+    std_msgs::String state_desc_msg;
+    state_desc_msg.data = stateDescription(tracking->mState);
+    state_desc_pub_.publish(state_desc_msg);
 
     drawer_.Update(tracking);
 
