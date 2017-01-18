@@ -30,7 +30,11 @@ endif()
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 find_package(OpenCV 3.1.0 REQUIRED)
-find_package(Eigen3 3.1.0 REQUIRED)
+
+# find_package(Eigen3 3.1.0 EXACT REQUIRED)
+# Even if "3.1.0 EXACT" is exactly what we want, the above command does not fetch the correct eigen3.
+# Sorry:
+set(EIGEN3_INCLUDE_DIR "/usr/local/include/eigen3/")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}
@@ -69,59 +73,6 @@ set(LIBS
   ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
   ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so)
 
-if (ENABLE_GUI)
-  message(STATUS "GUI is enabled")
-
-  find_package(Pangolin REQUIRED)
-  add_definitions(-DENABLE_GUI)
-
-  set(SRCS ${SRCS}
-    src/Viewer.cc
-    src/MapDrawer.cc
-    src/GUISystemBuilder.cc)
-
-  set(LIBS ${LIBS} ${Pangolin_LIBRARIES})
-
-else()
-  message(STATUS "GUI is disabled")
-endif()
-
 add_library(${PROJECT_NAME} SHARED ${SRCS})
 target_link_libraries(${PROJECT_NAME} ${LIBS})
 
-
-
-# Build examples
-if (ENABLE_GUI)
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples/RGB-D)
-
-  add_executable(rgbd_tum
-    Examples/RGB-D/rgbd_tum.cc)
-  target_link_libraries(rgbd_tum ${PROJECT_NAME})
-
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples/Stereo)
-
-  add_executable(stereo_kitti
-    Examples/Stereo/stereo_kitti.cc)
-  target_link_libraries(stereo_kitti ${PROJECT_NAME})
-
-  add_executable(stereo_euroc
-    Examples/Stereo/stereo_euroc.cc)
-  target_link_libraries(stereo_euroc ${PROJECT_NAME})
-
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples/Monocular)
-
-  add_executable(mono_tum
-    Examples/Monocular/mono_tum.cc)
-  target_link_libraries(mono_tum ${PROJECT_NAME})
-
-  add_executable(mono_kitti
-    Examples/Monocular/mono_kitti.cc)
-  target_link_libraries(mono_kitti ${PROJECT_NAME})
-
-  add_executable(mono_euroc
-    Examples/Monocular/mono_euroc.cc)
-  target_link_libraries(mono_euroc ${PROJECT_NAME})
-else()
-  message(STATUS "Warning: Since GUI is disabled, examples won't be built")
-endif()
