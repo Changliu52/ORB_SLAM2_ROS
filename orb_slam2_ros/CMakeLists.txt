@@ -49,6 +49,7 @@ ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  std_msgs
   message_generation
 )
 
@@ -57,6 +58,7 @@ add_message_files(
   FILES
   ORBState.msg
 )
+
 generate_messages(
   DEPENDENCIES
   std_msgs
