@@ -284,6 +284,7 @@ void ROSPublisher::Run()
 
 bool ROSPublisher::WaitCycleStart()
 {
+    //std::cout << "in WaitCycleStart" << std::endl;
     if (!IPublisherThread::WaitCycleStart())
         return false;
 
@@ -304,6 +305,24 @@ static const char *stateDescription(Tracking::eTrackingState trackingState)
     return "???";
 }
 
+
+static const ORB_SLAM2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
+{
+    ORB_SLAM2::ORBState state_msg;
+    state_msg.header.stamp = ros::Time::now();
+    state_msg.state = ORB_SLAM2::ORBState::UNKNOWN;
+
+    switch (trackingState) {
+        case Tracking::SYSTEM_NOT_READY: state_msg.state = ORB_SLAM2::ORBState::SYSTEM_NOT_READY;
+        case Tracking::NO_IMAGES_YET: state_msg.state = ORB_SLAM2::ORBState::NO_IMAGES_YET;
+        case Tracking::NOT_INITIALIZED: state_msg.state = ORB_SLAM2::ORBState::NOT_INITIALIZED;
+        case Tracking::OK: state_msg.state = ORB_SLAM2::ORBState::OK;
+        case Tracking::LOST: state_msg.state = ORB_SLAM2::ORBState::LOST;
+    }
+
+    return state_msg;
+}
+
 void ROSPublisher::Update(Tracking *tracking)
 {
     using namespace cv_bridge;
@@ -313,16 +332,15 @@ void ROSPublisher::Update(Tracking *tracking)
         return;
 
     // publish state as ORBState int
-    ORB_SLAM2::ORBState state_msg;
-    state_msg.header.seq++;
-    state_msg.header.stamp = ros::Time::now();
-    state_msg.state = static_cast<uint16_t>(tracking->mState);
+    ORB_SLAM2::ORBState state_msg = toORBStateMessage(tracking->mState);
     state_pub_.publish(state_msg);
+    //std::cout << "sent state " << state_msg.state << std::endl;
 
     // publish state as string
     std_msgs::String state_desc_msg;
     state_desc_msg.data = stateDescription(tracking->mState);
     state_desc_pub_.publish(state_desc_msg);
+    //std::cout << "sent state " << state_desc_msg.data << std::endl;
 
     drawer_.Update(tracking);
 

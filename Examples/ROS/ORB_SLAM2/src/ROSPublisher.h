@@ -33,8 +33,8 @@ class ROSPublisher :
     public ORB_SLAM2::IFrameSubscriber
 {
 public:
-    static constexpr const char *DEFAULT_MAP_FRAME = "map";
-    static constexpr const char *DEFAULT_CAMERA_FRAME = "camera";
+    static constexpr const char *DEFAULT_MAP_FRAME = "/ORB_SLAM2/map";
+    static constexpr const char *DEFAULT_CAMERA_FRAME = "/ORB_SLAM2/camera";
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
