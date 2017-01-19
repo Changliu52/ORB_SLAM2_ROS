@@ -17,7 +17,7 @@
 // #include <geometry_msgs/PoseStamped.h>
 #include <tf/transform_broadcaster.h>
 #include <std_msgs/String.h>
-#include <ORB_SLAM2/ORBState.h>
+#include <orb_slam2/ORBState.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <octomap/Pointcloud.h>
@@ -172,7 +172,7 @@ void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, 
 }
 
 
-ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
+ROSPublisher::ROSPublisher(Map *map, double frequency,
                 std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
     IMapPublisher(map),
     drawer_(GetMap()),
@@ -186,7 +186,7 @@ ROSPublisher::ROSPublisher(ORB_SLAM2::Map *map, double frequency,
     map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
     map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
     image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
-    state_pub_ = nh_.advertise<ORB_SLAM2::ORBState>("state", 10);
+    state_pub_ = nh_.advertise<orb_slam2::ORBState>("state", 10);
     state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
     octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
 }
@@ -306,18 +306,18 @@ static const char *stateDescription(Tracking::eTrackingState trackingState)
 }
 
 
-static const ORB_SLAM2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
+static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
 {
-    ORB_SLAM2::ORBState state_msg;
+    orb_slam2::ORBState state_msg;
     state_msg.header.stamp = ros::Time::now();
-    state_msg.state = ORB_SLAM2::ORBState::UNKNOWN;
+    state_msg.state = orb_slam2::ORBState::UNKNOWN;
 
     switch (trackingState) {
-        case Tracking::SYSTEM_NOT_READY: state_msg.state = ORB_SLAM2::ORBState::SYSTEM_NOT_READY;
-        case Tracking::NO_IMAGES_YET: state_msg.state = ORB_SLAM2::ORBState::NO_IMAGES_YET;
-        case Tracking::NOT_INITIALIZED: state_msg.state = ORB_SLAM2::ORBState::NOT_INITIALIZED;
-        case Tracking::OK: state_msg.state = ORB_SLAM2::ORBState::OK;
-        case Tracking::LOST: state_msg.state = ORB_SLAM2::ORBState::LOST;
+        case Tracking::SYSTEM_NOT_READY: state_msg.state = orb_slam2::ORBState::SYSTEM_NOT_READY;
+        case Tracking::NO_IMAGES_YET: state_msg.state = orb_slam2::ORBState::NO_IMAGES_YET;
+        case Tracking::NOT_INITIALIZED: state_msg.state = orb_slam2::ORBState::NOT_INITIALIZED;
+        case Tracking::OK: state_msg.state = orb_slam2::ORBState::OK;
+        case Tracking::LOST: state_msg.state = orb_slam2::ORBState::LOST;
     }
 
     return state_msg;
@@ -332,7 +332,7 @@ void ROSPublisher::Update(Tracking *tracking)
         return;
 
     // publish state as ORBState int
-    ORB_SLAM2::ORBState state_msg = toORBStateMessage(tracking->mState);
+    orb_slam2::ORBState state_msg = toORBStateMessage(tracking->mState);
     state_pub_.publish(state_msg);
     //std::cout << "sent state " << state_msg.state << std::endl;
 

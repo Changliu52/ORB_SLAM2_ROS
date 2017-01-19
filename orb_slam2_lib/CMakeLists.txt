@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(ORB_SLAM2)
+project(orb_slam2_lib)
 
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE Release)
@@ -27,23 +27,24 @@ else()
 endif()
 
 
-LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 find_package(OpenCV 3.1.0 REQUIRED)
 
+# LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 # find_package(Eigen3 3.1.0 EXACT REQUIRED)
 # Even if "3.1.0 EXACT" is exactly what we want, the above command does not fetch the correct eigen3.
 # Sorry:
 set(EIGEN3_INCLUDE_DIR "/usr/local/include/eigen3/")
+
+find_package(catkin REQUIRED)
+catkin_package()
 
 include_directories(
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/include
   ${EIGEN3_INCLUDE_DIR}
   ${Pangolin_INCLUDE_DIRS}
-  )
-
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
+)
 
 set(SRCS
   src/System.cc
@@ -65,13 +66,15 @@ set(SRCS
   src/Frame.cc
   src/KeyFrameDatabase.cc
   src/Sim3Solver.cc
-  src/Initializer.cc)
+  src/Initializer.cc
+)
 
 set(LIBS
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}
   ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-  ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so)
+  ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+)
 
 add_library(${PROJECT_NAME} SHARED ${SRCS})
 target_link_libraries(${PROJECT_NAME} ${LIBS})
