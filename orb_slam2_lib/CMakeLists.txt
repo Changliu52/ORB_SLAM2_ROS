@@ -26,7 +26,8 @@ else()
   message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
-
+add_subdirectory(Thirdparty/DBoW2)
+add_subdirectory(Thirdparty/g2o)
 
 find_package(OpenCV 3.1.0 REQUIRED)
 
@@ -72,8 +73,8 @@ set(SRCS
 set(LIBS
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}
-  ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-  ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+  DBoW2
+  g2o
 )
 
 add_library(${PROJECT_NAME} SHARED ${SRCS})
