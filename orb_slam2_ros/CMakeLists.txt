@@ -21,7 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   g2o
   message_generation
-  octomap
+  octomap_ros
 )
 
 # Generate messages in the 'msg' folder
