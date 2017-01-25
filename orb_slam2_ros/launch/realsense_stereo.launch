@@ -1,5 +1,5 @@
 <launch>
-    <node pkg="ORB_SLAM2" type="Stereo" name="Stereo" args="../../../../../../../Vocabulary/ORBvoc.txt ../../../../settings/realsense_stereo.yaml False" cwd="node" output="screen">
+    <node pkg="orb_slam2" type="Stereo" name="Stereo" args="$(find orb_slam2_lib)/Vocabulary/ORBvoc.txt $(find orb_slam2)/settings/realsense_stereo.yaml False" cwd="node" output="screen">
         <remap from="/camera/left/image_raw" to="/camera/ir/image_raw" />
         <remap from="/camera/right/image_raw" to="/camera/ir2/image_raw" />
     </node>
