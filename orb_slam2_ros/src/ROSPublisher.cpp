@@ -217,6 +217,67 @@ bool ROSPublisher::updateOctoMap()
     }
 }
 
+void ROSPublisher::publishMap()
+{
+    if (map_pub_.getNumSubscribers() > 0)
+    {
+        auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
+        msg.header.frame_id = map_frame_name_;
+        map_pub_.publish(msg);
+    }
+}
+
+void ROSPublisher::publishMapUpdates()
+{
+    if (map_updates_pub_.getNumSubscribers() > 0)
+    {
+        auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
+        msg.header.frame_id = map_frame_name_;
+        map_updates_pub_.publish(msg);
+    }
+}
+
+void ROSPublisher::publishCameraPose()
+{
+    // number of subscribers is unknown to a TransformBroadcaster
+
+    cv::Mat xf = computeCameraTransform(GetCameraPose());
+    if (!xf.empty()) {
+        camera_position_ = { xf.at<float>(0, 3), xf.at<float>(1, 3), xf.at<float>(2, 3) };
+        auto orientation = convertToQuaternion<tf::Quaternion>(xf);
+        tf::StampedTransform transform(
+            tf::Transform(orientation, camera_position_),
+            ros::Time::now(), map_frame_name_, camera_frame_name_);
+        camera_tf_pub_.sendTransform(transform);
+        ResetCamFlag();
+    }
+}
+
+void ROSPublisher::publishOctomap()
+{
+    if (octomap_pub_.getNumSubscribers() > 0)
+    {
+        updateOctoMap();
+        auto t0 = std::chrono::system_clock::now();
+        octomap_msgs::Octomap msgOctomap;
+        msgOctomap.header.frame_id = map_frame_name_;
+        msgOctomap.header.stamp = ros::Time::now();
+        if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))
+        {
+            auto tn = std::chrono::system_clock::now();
+            auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
+            //std::cout << "msg generation time: " << dt.count() << " ms" << std::endl;
+            t0 = std::chrono::system_clock::now();
+            octomap_pub_.publish(msgOctomap);
+            tn = std::chrono::system_clock::now();
+            dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
+            //std::cout << "msg publish time: " << dt.count() << " ms" << std::endl;
+        }
+    }
+}
+
+
+
 void ROSPublisher::Run()
 {
     using namespace std::this_thread;
@@ -226,55 +287,14 @@ void ROSPublisher::Run()
 
     ROS_INFO("ROS publisher started");
 
-    std_msgs::Header map_hdr;
-    map_hdr.frame_id = map_frame_name_;
-
     while (WaitCycleStart()) {
         // only publish map, map updates and camera pose, if camera pose was updated
         // TODO: maybe there is a way to check if the map was updated
         if (isCamUpdated()) {
-            // map
-            {
-                auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
-                msg.header = map_hdr;
-                map_pub_.publish(msg);
-            }
-            // map updates
-            {
-                auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
-                msg.header = map_hdr;
-                map_updates_pub_.publish(msg);
-            }
-            // camera pose
-            cv::Mat xf = computeCameraTransform(GetCameraPose());
-            if (!xf.empty()) {
-                camera_position_ = { xf.at<float>(0, 3), xf.at<float>(1, 3), xf.at<float>(2, 3) };
-                auto orientation = convertToQuaternion<tf::Quaternion>(xf);
-                tf::StampedTransform transform(
-                    tf::Transform(orientation, camera_position_),
-                    ros::Time::now(), map_frame_name_, camera_frame_name_);
-                camera_tf_pub_.sendTransform(transform);
-                ResetCamFlag();
-            }
-            // octomap
-            {
-                updateOctoMap();
-                auto t0 = std::chrono::system_clock::now();
-                octomap_msgs::Octomap msgOctomap;
-                msgOctomap.header.frame_id = map_frame_name_;
-                msgOctomap.header.stamp = ros::Time::now();
-                if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))
-                {
-                    auto tn = std::chrono::system_clock::now();
-                    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
-                    //std::cout << "msg generation time: " << dt.count() << " ms" << std::endl;
-                    t0 = std::chrono::system_clock::now();
-                    octomap_pub_.publish(msgOctomap);
-                    tn = std::chrono::system_clock::now();
-                    dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
-                    //std::cout << "msg publish time: " << dt.count() << " ms" << std::endl;
-                }
-            }
+            publishMap();
+            publishMapUpdates();
+            publishCameraPose();
+            publishOctomap();
         }
     }
 

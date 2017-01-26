@@ -68,6 +68,10 @@ private:
 
     bool updateOctoMap();
     void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, octomap::point3d origin, octomap::OcTree &);
+    void publishMap();
+    void publishMapUpdates();
+    void publishCameraPose();
+    void publishOctomap();
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {
