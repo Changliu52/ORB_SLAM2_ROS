@@ -217,6 +217,36 @@ bool ROSPublisher::updateOctoMap()
     }
 }
 
+static const char *stateDescription(Tracking::eTrackingState trackingState)
+{
+    switch (trackingState) {
+        case Tracking::SYSTEM_NOT_READY: return "System not ready";
+        case Tracking::NO_IMAGES_YET: return "No images yet";
+        case Tracking::NOT_INITIALIZED: return "Not initialized";
+        case Tracking::OK: return "Ok";
+        case Tracking::LOST: return "Tracking lost";
+    }
+
+    return "???";
+}
+
+static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
+{
+    orb_slam2::ORBState state_msg;
+    state_msg.header.stamp = ros::Time::now();
+    state_msg.state = orb_slam2::ORBState::UNKNOWN;
+
+    switch (trackingState) {
+        case Tracking::SYSTEM_NOT_READY: state_msg.state = orb_slam2::ORBState::SYSTEM_NOT_READY;
+        case Tracking::NO_IMAGES_YET: state_msg.state = orb_slam2::ORBState::NO_IMAGES_YET;
+        case Tracking::NOT_INITIALIZED: state_msg.state = orb_slam2::ORBState::NOT_INITIALIZED;
+        case Tracking::OK: state_msg.state = orb_slam2::ORBState::OK;
+        case Tracking::LOST: state_msg.state = orb_slam2::ORBState::LOST;
+    }
+
+    return state_msg;
+}
+
 void ROSPublisher::publishMap()
 {
     if (map_pub_.getNumSubscribers() > 0)
@@ -276,6 +306,39 @@ void ROSPublisher::publishOctomap()
     }
 }
 
+void ROSPublisher::publishState(Tracking *tracking)
+{
+    if (state_pub_.getNumSubscribers() > 0)
+    {
+        // publish state as ORBState int
+        orb_slam2::ORBState state_msg = toORBStateMessage(tracking->mState);
+        state_pub_.publish(state_msg);
+        //std::cout << "sent state " << state_msg.state << std::endl;
+    }
+    if (state_desc_pub_.getNumSubscribers() > 0)
+    {
+        // publish state as string
+        std_msgs::String state_desc_msg;
+        state_desc_msg.data = stateDescription(tracking->mState);
+        state_desc_pub_.publish(state_desc_msg);
+        //std::cout << "sent state " << state_desc_msg.data << std::endl;
+    }
+}
+
+void ROSPublisher::publishImage(Tracking *tracking)
+{
+    if (image_pub_.getNumSubscribers() > 0)
+    {
+        drawer_.Update(tracking);
+
+        std_msgs::Header hdr;
+        cv_bridge::CvImage cv_img {hdr, "bgr8", drawer_.DrawFrame()};
+
+        auto image_msg = cv_img.toImageMsg();
+        image_msg->header = hdr;
+        image_pub_.publish(*image_msg);
+    }
+}
 
 
 void ROSPublisher::Run()
@@ -312,67 +375,19 @@ bool ROSPublisher::WaitCycleStart()
     return true;
 }
 
-static const char *stateDescription(Tracking::eTrackingState trackingState)
-{
-    switch (trackingState) {
-    case Tracking::SYSTEM_NOT_READY: return "System not ready";
-    case Tracking::NO_IMAGES_YET: return "No images yet";
-    case Tracking::NOT_INITIALIZED: return "Not initialized";
-    case Tracking::OK: return "Ok";
-    case Tracking::LOST: return "Tracking lost";
-    }
-
-    return "???";
-}
-
-
-static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
-{
-    orb_slam2::ORBState state_msg;
-    state_msg.header.stamp = ros::Time::now();
-    state_msg.state = orb_slam2::ORBState::UNKNOWN;
-
-    switch (trackingState) {
-        case Tracking::SYSTEM_NOT_READY: state_msg.state = orb_slam2::ORBState::SYSTEM_NOT_READY;
-        case Tracking::NO_IMAGES_YET: state_msg.state = orb_slam2::ORBState::NO_IMAGES_YET;
-        case Tracking::NOT_INITIALIZED: state_msg.state = orb_slam2::ORBState::NOT_INITIALIZED;
-        case Tracking::OK: state_msg.state = orb_slam2::ORBState::OK;
-        case Tracking::LOST: state_msg.state = orb_slam2::ORBState::LOST;
-    }
-
-    return state_msg;
-}
-
 void ROSPublisher::Update(Tracking *tracking)
 {
-    using namespace cv_bridge;
     static std::mutex mutex;
 
     if (tracking == nullptr)
         return;
 
-    // publish state as ORBState int
-    orb_slam2::ORBState state_msg = toORBStateMessage(tracking->mState);
-    state_pub_.publish(state_msg);
-    //std::cout << "sent state " << state_msg.state << std::endl;
-
-    // publish state as string
-    std_msgs::String state_desc_msg;
-    state_desc_msg.data = stateDescription(tracking->mState);
-    state_desc_pub_.publish(state_desc_msg);
-    //std::cout << "sent state " << state_desc_msg.data << std::endl;
-
-    drawer_.Update(tracking);
+    publishState(tracking);
 
     // TODO: Make sure the camera TF is correctly aligned. See:
     // <http://docs.ros.org/jade/api/sensor_msgs/html/msg/Image.html>
 
-    std_msgs::Header hdr;
-    CvImage cv_img {hdr, "bgr8", drawer_.DrawFrame()};
-
-    auto image_msg = cv_img.toImageMsg();
-    image_msg->header = hdr;
-    image_pub_.publish(*image_msg);
+    publishImage(tracking);
 }
 
 ROSSystemBuilder::ROSSystemBuilder(const std::string& strVocFile,

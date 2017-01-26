@@ -72,6 +72,8 @@ private:
     void publishMapUpdates();
     void publishCameraPose();
     void publishOctomap();
+    void publishState(ORB_SLAM2::Tracking *tracking);
+    void publishImage(ORB_SLAM2::Tracking *tracking);
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {
