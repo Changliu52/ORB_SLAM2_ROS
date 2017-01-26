@@ -19,7 +19,6 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   pcl_ros
   pcl_conversions
-  g2o
   message_generation
   octomap_ros
 )
