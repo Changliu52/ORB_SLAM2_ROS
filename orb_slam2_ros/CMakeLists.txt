@@ -8,6 +8,10 @@ ADD_DEFINITIONS("-std=c++11")
 
 find_package(OpenCV 3.1.0 REQUIRED)
 
+# octomap from source
+add_subdirectory(Thirdparty/octomap)
+find_package(octomap REQUIRED)
+
 find_package(catkin REQUIRED COMPONENTS
   orb_slam2_lib
   roscpp
@@ -20,7 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   pcl_conversions
   message_generation
-  octomap_ros
+#  octomap_ros
 )
 
 # Generate messages in the 'msg' folder
