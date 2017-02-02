@@ -33,17 +33,17 @@ class ROSPublisher :
     public ORB_SLAM2::IFrameSubscriber
 {
 public:
-    static constexpr const char *DEFAULT_MAP_FRAME = "/ORB_SLAM2/map";
-    static constexpr const char *DEFAULT_CAMERA_FRAME = "/ORB_SLAM2/camera";
+    static constexpr const char *DEFAULT_MAP_FRAME = "/orb_slam2/world";
+    static constexpr const char *DEFAULT_MAP_FRAME_ADJUSTED = "/orb_slam2/map";
+    static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
+    static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
         ORB_SLAM2::Map *map,
         double frequency,
-        std::string map_frame = DEFAULT_MAP_FRAME,
-        std::string camera_frame = DEFAULT_CAMERA_FRAME,
         ros::NodeHandle nh = ros::NodeHandle());
-    
+
     virtual void Run() override;
     virtual void Update(ORB_SLAM2::Tracking*);
 
@@ -61,13 +61,14 @@ private:
     ros::Rate pub_rate_;
 
     int lastBigMapChange_;
+    bool octomap_tf_based_;
     octomap::OcTree octomap_;
     tf::Vector3 camera_position_;
 
     tf::TransformListener tf_listener_;
 
-    bool updateOctoMap();
-    void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, octomap::point3d origin, octomap::OcTree &);
+    void updateOctoMap();
+    void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, const octomap::point3d &, const octomap::pose6d &, octomap::OcTree &);
     void publishMap();
     void publishMapUpdates();
     void publishCameraPose();

@@ -28,9 +28,6 @@
 #include <chrono>
 
 
-#define DEFAULT_OCTOMAP_RESOLUTION 0.1
-
-
 using namespace ORB_SLAM2;
 
 
@@ -144,9 +141,10 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
 }
 
 /*
- * Integrates a `map_points` scan originating from camera position `origin` into an `octomap`.
+ * Integrates a `map_points` scan originating from camera position `origin`,
+ * also considering an additional TF to the camera, into an `octomap`.
 */
-void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, octomap::point3d origin, octomap::OcTree &octomap)
+void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, const octomap::point3d &origin, const octomap::pose6d &frame, octomap::OcTree &octomap)
 {
     // first convert map points to point cloud
     octomap::Pointcloud cloud;
@@ -157,31 +155,17 @@ void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, 
         cloud.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
     }
 
-    // integrate point cloud into octomap
-    try {
-        // with transformation to camera frame
-        tf::StampedTransform transform_in_target_frame;
-        tf_listener_.lookupTransform("ORB_base_link", camera_frame_name_, ros::Time(0) , transform_in_target_frame);
-        octomap::pose6d frame = octomap::poseTfToOctomap(transform_in_target_frame);
-
-        octomap.insertPointCloud(cloud, origin, frame);
-    } catch (tf::TransformException &ex) {
-        // without transformation
-        octomap.insertPointCloud(cloud, origin);
-    }
+    octomap.insertPointCloud(cloud, origin, frame);
 }
 
-
-ROSPublisher::ROSPublisher(Map *map, double frequency,
-                std::string map_frame, std::string camera_frame, ros::NodeHandle nh) :
+ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     IMapPublisher(map),
     drawer_(GetMap()),
     nh_(std::move(nh)),
-    map_frame_name_(std::move(map_frame)),
-    camera_frame_name_(std::move(camera_frame)),
     pub_rate_(frequency),
     lastBigMapChange_(-1),
-    octomap_(DEFAULT_OCTOMAP_RESOLUTION)
+    octomap_tf_based_(false),
+    octomap_(ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)
 {
     map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
     map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
@@ -193,28 +177,46 @@ ROSPublisher::ROSPublisher(Map *map, double frequency,
 
 /*
  * Either integrates the current GetReferenceMapPoints into the octomap or rebuilds
- * the entire octomap from GetAllMapPoints, if there is a big change in the ORB_SLAM map.
+ * the entire octomap from GetAllMapPoints, if there is a big change in the ORB_SLAM
+ * map or when TF mode changed.
 */
-bool ROSPublisher::updateOctoMap()
+void ROSPublisher::updateOctoMap()
 {
-    //std::cout << "GetMap()->GetLastBigChangeIdx() = " << GetMap()->GetLastBigChangeIdx() << std::endl;
-    if (GetMap()->GetLastBigChangeIdx() > lastBigMapChange_) {
-        // big map change: rebuild map completely
-        octomap_.clear(); // TODO: confirm functionality!
-        integrateMapPoints(GetMap()->GetAllMapPoints(), octomap::point3d(), octomap_);
-        lastBigMapChange_ = GetMap()->GetLastBigChangeIdx();
-        //std::cout << "rebuilt map" << std::endl;
-        return true;
-    } else {
-        octomap::point3d origin = {camera_position_.x(), camera_position_.y(), camera_position_.z()};
-        //std::cout << camera_position_.x() << " " << camera_position_.y() << " " << camera_position_.z() << std::endl;
+    octomap::pose6d frame;
+    octomap::point3d origin = {camera_position_.x(), camera_position_.y(), camera_position_.z()};
+    bool got_tf;
+
+    // try to get a TF from UAV base to camera (in ORB space)
+    try {
+        tf::StampedTransform transform_in_target_frame;
+        tf_listener_.lookupTransform("ORB_base_link", ROSPublisher::DEFAULT_CAMERA_FRAME, ros::Time(0), transform_in_target_frame);
+        frame = octomap::poseTfToOctomap(transform_in_target_frame);
+        got_tf = true;
+    } catch (tf::TransformException &ex) {
+        got_tf = false;
+    }
+
+    // TODO: test loop-closing properly
+    if ((got_tf != octomap_tf_based_) || (GetMap()->GetLastBigChangeIdx() > lastBigMapChange_)) {
+        // big map change or TF mode change: rebuild map completely
+        octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
+        // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
         auto t0 = std::chrono::system_clock::now();
-        integrateMapPoints(GetMap()->GetReferenceMapPoints(), origin, octomap_);
+        integrateMapPoints(GetMap()->GetAllMapPoints(), octomap::point3d(), frame, octomap_);
+        auto tn = std::chrono::system_clock::now();
+        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
+        //std::cout << "rebuilt map in " << dt.count() << " ms" << std::endl;
+        lastBigMapChange_ = GetMap()->GetLastBigChangeIdx();
+    } else {
+        // only consider currently visible MapPoints
+        auto t0 = std::chrono::system_clock::now();
+        integrateMapPoints(GetMap()->GetReferenceMapPoints(), origin, frame, octomap_);
         auto tn = std::chrono::system_clock::now();
         auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
         //std::cout << "integrateMapPoints time: " << dt.count() << " ms" << std::endl;
-        return false;
     }
+
+    octomap_tf_based_ = got_tf;
 }
 
 static const char *stateDescription(Tracking::eTrackingState trackingState)
@@ -238,10 +240,15 @@ static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trac
 
     switch (trackingState) {
         case Tracking::SYSTEM_NOT_READY: state_msg.state = orb_slam2::ORBState::SYSTEM_NOT_READY;
-        case Tracking::NO_IMAGES_YET: state_msg.state = orb_slam2::ORBState::NO_IMAGES_YET;
-        case Tracking::NOT_INITIALIZED: state_msg.state = orb_slam2::ORBState::NOT_INITIALIZED;
-        case Tracking::OK: state_msg.state = orb_slam2::ORBState::OK;
-        case Tracking::LOST: state_msg.state = orb_slam2::ORBState::LOST;
+                                         break;
+        case Tracking::NO_IMAGES_YET:    state_msg.state = orb_slam2::ORBState::NO_IMAGES_YET;
+                                         break;
+        case Tracking::NOT_INITIALIZED:  state_msg.state = orb_slam2::ORBState::NOT_INITIALIZED;
+                                         break;
+        case Tracking::OK:               state_msg.state = orb_slam2::ORBState::OK;
+                                         break;
+        case Tracking::LOST:             state_msg.state = orb_slam2::ORBState::LOST;
+                                         break;
     }
 
     return state_msg;
@@ -252,7 +259,7 @@ void ROSPublisher::publishMap()
     if (map_pub_.getNumSubscribers() > 0)
     {
         auto msg = convertToPCL2(GetMap()->GetAllMapPoints());
-        msg.header.frame_id = map_frame_name_;
+        msg.header.frame_id = ROSPublisher::DEFAULT_MAP_FRAME;
         map_pub_.publish(msg);
     }
 }
@@ -262,7 +269,7 @@ void ROSPublisher::publishMapUpdates()
     if (map_updates_pub_.getNumSubscribers() > 0)
     {
         auto msg = convertToPCL2(GetMap()->GetReferenceMapPoints());
-        msg.header.frame_id = map_frame_name_;
+        msg.header.frame_id = ROSPublisher::DEFAULT_MAP_FRAME;
         map_updates_pub_.publish(msg);
     }
 }
@@ -277,7 +284,7 @@ void ROSPublisher::publishCameraPose()
         auto orientation = convertToQuaternion<tf::Quaternion>(xf);
         tf::StampedTransform transform(
             tf::Transform(orientation, camera_position_),
-            ros::Time::now(), map_frame_name_, camera_frame_name_);
+            ros::Time::now(), ROSPublisher::DEFAULT_MAP_FRAME, ROSPublisher::DEFAULT_CAMERA_FRAME);
         camera_tf_pub_.sendTransform(transform);
         ResetCamFlag();
     }
@@ -290,7 +297,9 @@ void ROSPublisher::publishOctomap()
         updateOctoMap();
         auto t0 = std::chrono::system_clock::now();
         octomap_msgs::Octomap msgOctomap;
-        msgOctomap.header.frame_id = map_frame_name_;
+        msgOctomap.header.frame_id = octomap_tf_based_ ?
+                                     ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED :
+                                     ROSPublisher::DEFAULT_MAP_FRAME;
         msgOctomap.header.stamp = ros::Time::now();
         if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))
         {
@@ -313,7 +322,6 @@ void ROSPublisher::publishState(Tracking *tracking)
         // publish state as ORBState int
         orb_slam2::ORBState state_msg = toORBStateMessage(tracking->mState);
         state_pub_.publish(state_msg);
-        //std::cout << "sent state " << state_msg.state << std::endl;
     }
     if (state_desc_pub_.getNumSubscribers() > 0)
     {
@@ -321,7 +329,6 @@ void ROSPublisher::publishState(Tracking *tracking)
         std_msgs::String state_desc_msg;
         state_desc_msg.data = stateDescription(tracking->mState);
         state_desc_pub_.publish(state_desc_msg);
-        //std::cout << "sent state " << state_desc_msg.data << std::endl;
     }
 }
 
@@ -400,7 +407,7 @@ ROSSystemBuilder::ROSSystemBuilder(const std::string& strVocFile,
     System::GenericBuilder(strVocFile, strSettingsFile, sensor)
 {
     mpPublisher = make_unique<ROSPublisher>(
-        GetMap(), frequency, std::move(map_frame), std::move(camera_frame), std::move(nh));
+        GetMap(), frequency, std::move(nh));
     mpTracker->SetFrameSubscriber(mpPublisher.get());
     mpTracker->SetMapPublisher(mpPublisher.get());
 }
