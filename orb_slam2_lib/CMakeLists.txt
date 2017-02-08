@@ -30,12 +30,7 @@ add_subdirectory(Thirdparty/DBoW2)
 add_subdirectory(Thirdparty/g2o)
 
 find_package(OpenCV 3.1.0 REQUIRED)
-
-# LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
-# find_package(Eigen3 3.1.0 EXACT REQUIRED)
-# Even if "3.1.0 EXACT" is exactly what we want, the above command does not fetch the correct eigen3.
-# Sorry:
-set(EIGEN3_INCLUDE_DIR "/usr/local/include/eigen3/")
+find_package(Eigen3 REQUIRED)
 
 find_package(catkin REQUIRED)
 catkin_package()
