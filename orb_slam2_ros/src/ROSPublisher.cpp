@@ -173,6 +173,7 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     state_pub_ = nh_.advertise<orb_slam2::ORBState>("state", 10);
     state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
     octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
+    orb_state_.state = orb_slam2::ORBState::UNKNOWN;
 }
 
 /*
@@ -219,14 +220,14 @@ void ROSPublisher::updateOctoMap()
     octomap_tf_based_ = got_tf;
 }
 
-static const char *stateDescription(Tracking::eTrackingState trackingState)
+static const char *stateDescription(orb_slam2::ORBState orb_state)
 {
-    switch (trackingState) {
-        case Tracking::SYSTEM_NOT_READY: return "System not ready";
-        case Tracking::NO_IMAGES_YET: return "No images yet";
-        case Tracking::NOT_INITIALIZED: return "Not initialized";
-        case Tracking::OK: return "Ok";
-        case Tracking::LOST: return "Tracking lost";
+    switch (orb_state.state) {
+        case orb_slam2::ORBState::SYSTEM_NOT_READY: return "System not ready";
+        case orb_slam2::ORBState::NO_IMAGES_YET: return "No images yet";
+        case orb_slam2::ORBState::NOT_INITIALIZED: return "Not initialized";
+        case orb_slam2::ORBState::OK: return "OK";
+        case orb_slam2::ORBState::LOST: return "Tracking lost";
     }
 
     return "???";
@@ -320,16 +321,25 @@ void ROSPublisher::publishState(Tracking *tracking)
     if (state_pub_.getNumSubscribers() > 0)
     {
         // publish state as ORBState int
-        orb_slam2::ORBState state_msg = toORBStateMessage(tracking->mState);
-        state_pub_.publish(state_msg);
+        if (tracking == NULL)
+        {
+            // re-publish old state
+            orb_state_.header.stamp = ros::Time::now();
+        } else {
+            // get state from tracking
+            orb_state_ = toORBStateMessage(tracking->mState);
+        }
+        state_pub_.publish(orb_state_);
     }
     if (state_desc_pub_.getNumSubscribers() > 0)
     {
         // publish state as string
         std_msgs::String state_desc_msg;
-        state_desc_msg.data = stateDescription(tracking->mState);
+        state_desc_msg.data = stateDescription(orb_state_);
         state_desc_pub_.publish(state_desc_msg);
     }
+
+    last_state_publish_time_ = ros::Time::now();
 }
 
 void ROSPublisher::publishImage(Tracking *tracking)
@@ -365,6 +375,10 @@ void ROSPublisher::Run()
             publishMapUpdates();
             publishCameraPose();
             publishOctomap();
+        }
+        if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / STATE_REPUBLISH_WAIT_RATE))
+        {
+            publishState(NULL);
         }
     }
 

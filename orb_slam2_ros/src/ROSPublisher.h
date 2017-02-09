@@ -16,10 +16,13 @@
 #include <mutex>
 
 #include <ros/ros.h>
+#include <ros/time.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 
 #include <octomap/OcTree.h>
+
+#include <orb_slam2/ORBState.h>
 
 namespace ORB_SLAM2 
 {
@@ -37,6 +40,7 @@ public:
     static constexpr const char *DEFAULT_MAP_FRAME_ADJUSTED = "/orb_slam2/map";
     static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
+    static constexpr const float STATE_REPUBLISH_WAIT_RATE = 20;  // re-publish state @ 20 Hz
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
@@ -59,6 +63,9 @@ private:
     ros::Publisher map_pub_, map_updates_pub_, image_pub_, odom_pub_, state_pub_, state_desc_pub_, octomap_pub_;
     tf::TransformBroadcaster camera_tf_pub_;
     ros::Rate pub_rate_;
+
+    ros::Time last_state_publish_time_;
+    orb_slam2::ORBState orb_state_;
 
     int lastBigMapChange_;
     bool octomap_tf_based_;
