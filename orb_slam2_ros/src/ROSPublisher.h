@@ -20,6 +20,8 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 
+#include <nav_msgs/OccupancyGrid.h>
+
 #include <octomap/OcTree.h>
 
 #include <orb_slam2/ORBState.h>
@@ -41,6 +43,7 @@ public:
     static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
     static constexpr const float STATE_REPUBLISH_WAIT_RATE = 20;  // re-publish state @ 20 Hz
+    static constexpr const float PROJECTION_MIN_HEIGHT = -10;
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
@@ -60,7 +63,7 @@ private:
     // Important: `nh_` goes before the `*_pub_`, because their construction relies on `nh_`!
     ros::NodeHandle nh_;
     std::string map_frame_name_, camera_frame_name_;
-    ros::Publisher map_pub_, map_updates_pub_, image_pub_, odom_pub_, state_pub_, state_desc_pub_, octomap_pub_;
+    ros::Publisher map_pub_, map_updates_pub_, image_pub_, odom_pub_, state_pub_, state_desc_pub_, octomap_pub_, projected_map_pub_;
     tf::TransformBroadcaster camera_tf_pub_;
     ros::Rate pub_rate_;
 
@@ -72,16 +75,25 @@ private:
     octomap::OcTree octomap_;
     tf::Vector3 camera_position_;
 
+    double projectionMinHeight_;
+
     tf::TransformListener tf_listener_;
 
     void updateOctoMap();
     void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, const octomap::point3d &, const octomap::pose6d &, octomap::OcTree &);
+
+    void octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map){
+        octomapToOccupancyGrid(octree, map, -1.0*std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
+    }
+    void octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ );
+
     void publishMap();
     void publishMapUpdates();
     void publishCameraPose();
     void publishOctomap();
     void publishState(ORB_SLAM2::Tracking *tracking);
     void publishImage(ORB_SLAM2::Tracking *tracking);
+    void publishProjectedMap();
 };
 
 class ROSSystemBuilder : public ORB_SLAM2::System::GenericBuilder {

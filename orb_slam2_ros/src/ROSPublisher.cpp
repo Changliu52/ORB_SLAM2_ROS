@@ -167,13 +167,19 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     octomap_tf_based_(false),
     octomap_(ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)
 {
+    // initialize publishers
     map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
     map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
     image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
     state_pub_ = nh_.advertise<orb_slam2::ORBState>("state", 10);
     state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
     octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
+    projected_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, 10);
     orb_state_.state = orb_slam2::ORBState::UNKNOWN;
+
+    // initialize parameters
+    nh.param<double>("occupancy_projection_min_height", projectionMinHeight_, ROSPublisher::PROJECTION_MIN_HEIGHT);
+    // TODO make more params configurable
 }
 
 /*
@@ -197,6 +203,12 @@ void ROSPublisher::updateOctoMap()
         got_tf = false;
     }
 
+    // temporary workaround for buggy octomap
+    if (!got_tf) {
+        std::cout << "no TF yet: skipping update to avoid clear()" << std::endl;
+        return;
+    }
+
     // TODO: test loop-closing properly
     if ((got_tf != octomap_tf_based_) || (GetMap()->GetLastBigChangeIdx() > lastBigMapChange_)) {
         // big map change or TF mode change: rebuild map completely
@@ -218,6 +230,81 @@ void ROSPublisher::updateOctoMap()
     }
 
     octomap_tf_based_ = got_tf;
+}
+
+/*
+ * Creates a 2D Occupancy Grid from the Octomap.
+ */
+void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ )
+{
+    map.info.resolution = octree.getResolution();
+    double minX, minY, minZ;
+    double maxX, maxY, maxZ;
+    octree.getMetricMin(minX, minY, minZ);
+    octree.getMetricMax(maxX, maxY, maxZ);
+    ROS_DEBUG("Octree min %f %f %f", minX, minY, minZ);
+    ROS_DEBUG("Octree max %f %f %f", maxX, maxY, maxZ);
+    minZ = std::max(minZ_, minZ);
+    maxZ = std::min(maxZ_, maxZ);
+
+    octomap::point3d minPt(minX, minY, minZ);
+    octomap::point3d maxPt(maxX, maxY, maxZ);
+    octomap::OcTreeKey minKey, maxKey, curKey;
+
+    if (!octree.coordToKeyChecked(minPt, minKey))
+    {
+        ROS_ERROR("Could not create OcTree key at %f %f %f", minPt.x(), minPt.y(), minPt.z());
+        return;
+    }
+    if (!octree.coordToKeyChecked(maxPt, maxKey))
+    {
+        ROS_ERROR("Could not create OcTree key at %f %f %f", maxPt.x(), maxPt.y(), maxPt.z());
+        return;
+    }
+
+    map.info.width = maxKey[0] - minKey[0] + 1;
+    map.info.height = maxKey[1] - minKey[1] + 1;
+
+    // might not exactly be min / max:
+    octomap::point3d origin =   octree.keyToCoord(minKey, octree.getTreeDepth());
+    map.info.origin.position.x = origin.x() - octree.getResolution() * 0.5;
+    map.info.origin.position.y = origin.y() - octree.getResolution() * 0.5;
+
+    map.info.origin.orientation.x = 0.;
+    map.info.origin.orientation.y = 0.;
+    map.info.origin.orientation.z = 0.;
+    map.info.origin.orientation.w = 1.;
+
+    // Allocate space to hold the data
+    map.data.resize(map.info.width * map.info.height, -1);
+
+    //init with unknown
+    for(std::vector<int8_t>::iterator it = map.data.begin(); it != map.data.end(); ++it) {
+      *it = -1;
+    }
+
+    // iterate over all keys:
+    unsigned i, j;
+    for (curKey[1] = minKey[1], j = 0; curKey[1] <= maxKey[1]; ++curKey[1], ++j)
+    {
+        for (curKey[0] = minKey[0], i = 0; curKey[0] <= maxKey[0]; ++curKey[0], ++i)
+        {
+            for (curKey[2] = minKey[2]; curKey[2] <= maxKey[2]; ++curKey[2])
+            { //iterate over height
+                octomap::OcTreeNode* node = octree.search(curKey);
+                if (node)
+                {
+                    bool occupied = octree.isNodeOccupied(node);
+                    if(occupied) {
+                        map.data[map.info.width * j + i] = 100;
+                        break;
+                    } else {
+                        map.data[map.info.width * j + i] = 0;
+                    }
+                }
+            }
+        }
+    }
 }
 
 static const char *stateDescription(orb_slam2::ORBState orb_state)
@@ -255,6 +342,9 @@ static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trac
     return state_msg;
 }
 
+/*
+ * Publishes ORB_SLAM 2 GetAllMapPoints() as a PointCloud2.
+ */
 void ROSPublisher::publishMap()
 {
     if (map_pub_.getNumSubscribers() > 0)
@@ -265,6 +355,9 @@ void ROSPublisher::publishMap()
     }
 }
 
+/*
+ * Publishes ORB_SLAM 2 GetReferenceMapPoints() as a PointCloud2.
+ */
 void ROSPublisher::publishMapUpdates()
 {
     if (map_updates_pub_.getNumSubscribers() > 0)
@@ -275,6 +368,9 @@ void ROSPublisher::publishMapUpdates()
     }
 }
 
+/*
+ * Publishes ORB_SLAM 2 GetCameraPose() as a TF.
+ */
 void ROSPublisher::publishCameraPose()
 {
     // number of subscribers is unknown to a TransformBroadcaster
@@ -291,18 +387,20 @@ void ROSPublisher::publishCameraPose()
     }
 }
 
+/*
+ * Publishes the previously built Octomap.
+ */
 void ROSPublisher::publishOctomap()
 {
     if (octomap_pub_.getNumSubscribers() > 0)
     {
-        updateOctoMap();
         auto t0 = std::chrono::system_clock::now();
         octomap_msgs::Octomap msgOctomap;
         msgOctomap.header.frame_id = octomap_tf_based_ ?
                                      ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED :
                                      ROSPublisher::DEFAULT_MAP_FRAME;
         msgOctomap.header.stamp = ros::Time::now();
-        if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))
+        if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))   // TODO: full/binary...?
         {
             auto tn = std::chrono::system_clock::now();
             auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
@@ -316,6 +414,9 @@ void ROSPublisher::publishOctomap()
     }
 }
 
+/*
+ * Publishes the ORB_SLAM 2 tracking state as ORBState int and/or as a description string.
+ */
 void ROSPublisher::publishState(Tracking *tracking)
 {
     if (state_pub_.getNumSubscribers() > 0)
@@ -342,6 +443,9 @@ void ROSPublisher::publishState(Tracking *tracking)
     last_state_publish_time_ = ros::Time::now();
 }
 
+/*
+ * Publishes the current ORB_SLAM 2 status image.
+ */
 void ROSPublisher::publishImage(Tracking *tracking)
 {
     if (image_pub_.getNumSubscribers() > 0)
@@ -357,6 +461,23 @@ void ROSPublisher::publishImage(Tracking *tracking)
     }
 }
 
+/*
+ * Creates a 2D Occupancy Grid from the Octomap and publishes it.
+ */
+void ROSPublisher::publishProjectedMap()
+{
+  static nav_msgs::OccupancyGrid msgOccupancy;
+  if (projected_map_pub_.getNumSubscribers() > 0)
+  {
+    msgOccupancy.header.frame_id = ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED;
+    msgOccupancy.header.stamp = ros::Time::now();
+
+    octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
+
+    projected_map_pub_.publish(msgOccupancy);
+
+  }
+}
 
 void ROSPublisher::Run()
 {
@@ -371,10 +492,13 @@ void ROSPublisher::Run()
         // only publish map, map updates and camera pose, if camera pose was updated
         // TODO: maybe there is a way to check if the map was updated
         if (isCamUpdated()) {
+            updateOctoMap();  // keep track of map updates
+
             publishMap();
             publishMapUpdates();
             publishCameraPose();
             publishOctomap();
+            publishProjectedMap();
         }
         if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / STATE_REPUBLISH_WAIT_RATE))
         {
