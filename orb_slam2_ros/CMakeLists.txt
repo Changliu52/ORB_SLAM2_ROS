@@ -10,7 +10,6 @@ find_package(OpenCV 3.1.0 REQUIRED)
 
 # newest version of octomap from source
 add_subdirectory(Thirdparty/octomap)
-find_package(octomap REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
   orb_slam2_lib
@@ -39,8 +38,6 @@ generate_messages(
 
 catkin_package()
 
-# message("catkin_LIBRARIES " ${catkin_LIBRARIES})
-
 include_directories(
   ${roscpp_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}
@@ -52,7 +49,7 @@ set(LIBS
   ${roscpp_LIBRARIES}
   ${OpenCV_LIBS}
   ${catkin_LIBRARIES}
-  ${OCTOMAP_LIBRARIES}
+  octomap
   orb_slam2_lib
 )
 
