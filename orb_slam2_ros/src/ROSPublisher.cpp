@@ -140,23 +140,6 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
     return msg;
 }
 
-/*
- * Integrates a `map_points` scan originating from camera position `origin`,
- * also considering an additional TF to the camera, into an `octomap`.
-*/
-void ROSPublisher::integrateMapPoints(const std::vector<MapPoint*> &map_points, const octomap::point3d &origin, const octomap::pose6d &frame, octomap::OcTree &octomap)
-{
-    // first convert map points to point cloud
-    octomap::Pointcloud cloud;
-    for (MapPoint *map_point : map_points) {
-        if (map_point->isBad())
-            continue;
-        cv::Mat pos = map_point->GetWorldPos();
-        cloud.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
-    }
-
-    octomap.insertPointCloud(cloud, origin, frame);
-}
 
 ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     IMapPublisher(map),
@@ -165,6 +148,7 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     pub_rate_(frequency),
     lastBigMapChange_(-1),
     octomap_tf_based_(false),
+    clear_octomap_(false),
     octomap_(ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)
 {
     // initialize publishers
@@ -180,56 +164,107 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     // initialize parameters
     nh.param<double>("occupancy_projection_min_height", projectionMinHeight_, ROSPublisher::PROJECTION_MIN_HEIGHT);
     // TODO make more params configurable
+
+    octomap_worker_thread_ = std::thread( [this] { octomapWorker(); } );
 }
 
 /*
- * Either integrates the current GetReferenceMapPoints into the octomap or rebuilds
- * the entire octomap from GetAllMapPoints, if there is a big change in the ORB_SLAM
- * map or when TF mode changed.
-*/
-void ROSPublisher::updateOctoMap()
+ * Either appends all GetReferenceMapPoints to the pointcloud stash or clears the stash and re-fills it
+ * with GetAllMapPoints, in case there is a big map change in ORB_SLAM 2 or all_map_points is set to true.
+ */
+void ROSPublisher::stashMapPoints(bool all_map_points)
 {
-    octomap::pose6d frame;
-    octomap::point3d origin = {camera_position_.x(), camera_position_.y(), camera_position_.z()};
-    bool got_tf;
+    std::vector<MapPoint*> map_points;
 
-    // try to get a TF from UAV base to camera (in ORB space)
-    try {
-        tf::StampedTransform transform_in_target_frame;
-        tf_listener_.lookupTransform("ORB_base_link", ROSPublisher::DEFAULT_CAMERA_FRAME, ros::Time(0), transform_in_target_frame);
-        frame = octomap::poseTfToOctomap(transform_in_target_frame);
-        got_tf = true;
-    } catch (tf::TransformException &ex) {
-        got_tf = false;
-    }
-
-    // temporary workaround for buggy octomap
-    if (!got_tf) {
-        std::cout << "no TF yet: skipping update to avoid clear()" << std::endl;
-        return;
-    }
-
-    // TODO: test loop-closing properly
-    if ((got_tf != octomap_tf_based_) || (GetMap()->GetLastBigChangeIdx() > lastBigMapChange_)) {
-        // big map change or TF mode change: rebuild map completely
-        octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
-        // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
-        auto t0 = std::chrono::system_clock::now();
-        integrateMapPoints(GetMap()->GetAllMapPoints(), octomap::point3d(), frame, octomap_);
-        auto tn = std::chrono::system_clock::now();
-        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
-        //std::cout << "rebuilt map in " << dt.count() << " ms" << std::endl;
+    if (all_map_points || GetMap()->GetLastBigChangeIdx() > lastBigMapChange_)
+    {
+        map_points = GetMap()->GetAllMapPoints();
         lastBigMapChange_ = GetMap()->GetLastBigChangeIdx();
+
+        // TODO: temporarily disabled due to octomap clear() bug
+        //clear_octomap_ = true;
     } else {
-        // only consider currently visible MapPoints
-        auto t0 = std::chrono::system_clock::now();
-        integrateMapPoints(GetMap()->GetReferenceMapPoints(), origin, frame, octomap_);
-        auto tn = std::chrono::system_clock::now();
-        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
-        //std::cout << "integrateMapPoints time: " << dt.count() << " ms" << std::endl;
+        map_points = GetMap()->GetReferenceMapPoints();
     }
 
-    octomap_tf_based_ = got_tf;
+    pointcloud_map_points_mutex_.lock();
+    for (MapPoint *map_point : map_points) {
+        if (map_point->isBad())
+            continue;
+        cv::Mat pos = map_point->GetWorldPos();
+        pointcloud_map_points_.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
+    }
+    pointcloud_map_points_mutex_.unlock();
+}
+
+/*
+ * Octomap worker thread function, which has exclusive access to the octomap. Updates and publishes it.
+ */
+void ROSPublisher::octomapWorker()
+{
+    static std::chrono::system_clock::time_point this_cycle_time;
+
+    octomap::pose6d frame;
+    bool got_tf;
+    octomap::point3d origin;
+
+    // wait until ORB_SLAM 2 is up and running
+    while (orb_state_.state != orb_slam2::ORBState::OK)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+
+    // main thread loop
+    while (!isStopped())
+    {
+        this_cycle_time = std::chrono::system_clock::now();
+
+        origin = {camera_position_.x(), camera_position_.y(), camera_position_.z()};
+
+        // try to get a TF from UAV base to camera (in ORB space)
+        try {
+            tf::StampedTransform transform_in_target_frame;
+            tf_listener_.lookupTransform("ORB_base_link", ROSPublisher::DEFAULT_CAMERA_FRAME, ros::Time(0), transform_in_target_frame);
+            frame = octomap::poseTfToOctomap(transform_in_target_frame);
+            got_tf = true;
+        } catch (tf::TransformException &ex) {
+            frame = octomap::pose6d(0, 0, 0, 0, 0, 0);
+            got_tf = false;
+        }
+
+        // TODO temporary workaround for buggy octomap
+        if (!got_tf) {
+            std::cout << "no TF yet: skipping update to avoid clear()" << std::endl;
+            continue;
+        }
+        //clear_octomap_ |= (got_tf != octomap_tf_based_);
+
+        if (clear_octomap_)
+        {
+            clear_octomap_ = false; // TODO: mutex?
+            // TODO: temporary octomap safety check
+            std::cout << "octomap clear requested, but this shouldn't happen: FAILING" << std::endl;
+            assert(false);
+            octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
+
+            // TODO: test loop-closing properly
+            // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
+        }
+
+        pointcloud_map_points_mutex_.lock();
+        octomap_.insertPointCloud(pointcloud_map_points_, origin, frame);
+        pointcloud_map_points_.clear();
+        pointcloud_map_points_mutex_.unlock();
+
+        octomap_tf_based_ = got_tf;
+
+        publishOctomap();
+        publishProjectedMap();
+
+        std::cout << "Hi this is octomapWorker thread, I just finished one cycle." << std::endl;
+
+        std::this_thread::sleep_until(this_cycle_time + std::chrono::milliseconds((int) (1000. / ROSPublisher::OCTOMAP_RATE)));
+    }
 }
 
 /*
@@ -492,13 +527,11 @@ void ROSPublisher::Run()
         // only publish map, map updates and camera pose, if camera pose was updated
         // TODO: maybe there is a way to check if the map was updated
         if (isCamUpdated()) {
-            updateOctoMap();  // keep track of map updates
-
             publishMap();
             publishMapUpdates();
             publishCameraPose();
-            publishOctomap();
-            publishProjectedMap();
+
+            stashMapPoints(); // store current reference map points for the octomap worker
         }
         if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / STATE_REPUBLISH_WAIT_RATE))
         {

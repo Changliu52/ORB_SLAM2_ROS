@@ -44,6 +44,7 @@ public:
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
     static constexpr const float STATE_REPUBLISH_WAIT_RATE = 20;  // re-publish state @ 20 Hz
     static constexpr const float PROJECTION_MIN_HEIGHT = -10;
+    static constexpr const float OCTOMAP_RATE = 1;  // rate of octomap cycles (integrate MapPoints and publish)
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
@@ -75,9 +76,17 @@ private:
     octomap::OcTree octomap_;
     tf::Vector3 camera_position_;
 
+    octomap::Pointcloud pointcloud_map_points_;
+    std::mutex pointcloud_map_points_mutex_;
+    bool clear_octomap_;
+    std::thread octomap_worker_thread_;
+
     double projectionMinHeight_;
 
     tf::TransformListener tf_listener_;
+
+    void stashMapPoints(bool all_map_points = false);
+    void octomapWorker();
 
     void updateOctoMap();
     void integrateMapPoints(const std::vector<ORB_SLAM2::MapPoint*> &, const octomap::point3d &, const octomap::pose6d &, octomap::OcTree &);
