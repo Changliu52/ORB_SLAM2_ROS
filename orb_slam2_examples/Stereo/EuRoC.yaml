@@ -4,7 +4,7 @@
 # Camera Parameters. Adjust them!
 #--------------------------------------------------------------------------------------------
 
-# Camera calibration and distortion parameters (OpenCV) 
+# Camera calibration and distortion parameters (OpenCV)
 Camera.fx: 435.2046959714599
 Camera.fy: 435.2046959714599
 Camera.cx: 367.4517211914062
@@ -18,7 +18,7 @@ Camera.p2: 0.0
 Camera.width: 752
 Camera.height: 480
 
-# Camera frames per second 
+# Camera frames per second
 Camera.fps: 20.0
 
 # stereo baseline times fx
@@ -28,7 +28,7 @@ Camera.bf: 47.90639384423901
 Camera.RGB: 1
 
 # Close/Far threshold. Baseline times.
-ThDepth: 35
+ThDepth: 30
 
 #--------------------------------------------------------------------------------------------
 # Stereo Rectification. Only if you need to pre-rectify the images.
@@ -87,16 +87,16 @@ RIGHT.P:  !!opencv-matrix
 # ORB Extractor: Number of features per image
 ORBextractor.nFeatures: 1200
 
-# ORB Extractor: Scale factor between levels in the scale pyramid 	
+# ORB Extractor: Scale factor between levels in the scale pyramid
 ORBextractor.scaleFactor: 1.2
 
-# ORB Extractor: Number of levels in the scale pyramid	
+# ORB Extractor: Number of levels in the scale pyramid
 ORBextractor.nLevels: 8
 
 # ORB Extractor: Fast threshold
 # Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
 # Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
-# You can lower these values if your images have low contrast			
+# You can lower these values if your images have low contrast
 ORBextractor.iniThFAST: 20
 ORBextractor.minThFAST: 7
 
