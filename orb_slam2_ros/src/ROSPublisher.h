@@ -78,6 +78,7 @@ private:
 
     octomap::Pointcloud pointcloud_map_points_;
     std::mutex pointcloud_map_points_mutex_;
+    int pointcloud_chunks_stashed_;
     bool clear_octomap_;
     std::thread octomap_worker_thread_;
 
@@ -95,6 +96,8 @@ private:
         octomapToOccupancyGrid(octree, map, -1.0*std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
     }
     void octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ );
+
+    void octomapToOccupancyGridFancy(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map);
 
     void publishMap();
     void publishMapUpdates();

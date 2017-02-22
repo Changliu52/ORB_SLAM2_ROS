@@ -149,6 +149,7 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     lastBigMapChange_(-1),
     octomap_tf_based_(false),
     clear_octomap_(false),
+    pointcloud_chunks_stashed_(0),
     octomap_(ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)
 {
     // initialize publishers
@@ -194,6 +195,7 @@ void ROSPublisher::stashMapPoints(bool all_map_points)
         cv::Mat pos = map_point->GetWorldPos();
         pointcloud_map_points_.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
     }
+    pointcloud_chunks_stashed_++;
     pointcloud_map_points_mutex_.unlock();
 }
 
@@ -254,6 +256,8 @@ void ROSPublisher::octomapWorker()
         pointcloud_map_points_mutex_.lock();
         octomap_.insertPointCloud(pointcloud_map_points_, origin, frame);
         pointcloud_map_points_.clear();
+        int pointcloud_chunks_stashed = pointcloud_chunks_stashed_;
+        pointcloud_chunks_stashed_ = 0;
         pointcloud_map_points_mutex_.unlock();
 
         octomap_tf_based_ = got_tf;
@@ -261,7 +265,7 @@ void ROSPublisher::octomapWorker()
         publishOctomap();
         publishProjectedMap();
 
-        std::cout << "Hi this is octomapWorker thread, I just finished one cycle." << std::endl;
+        ROS_INFO("octomapWorker thread: finished cycle integrating %i pointcloud chunks.", pointcloud_chunks_stashed);
 
         std::this_thread::sleep_until(this_cycle_time + std::chrono::milliseconds((int) (1000. / ROSPublisher::OCTOMAP_RATE)));
     }
@@ -338,6 +342,71 @@ void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msg
                     }
                 }
             }
+        }
+    }
+}
+
+void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map)
+{
+    // get tree dimensions
+    double min_x, min_y, min_z;
+    double max_x, max_y, max_z;
+    octree.getMetricMin(min_x, min_y, min_z);
+    octree.getMetricMax(max_x, max_y, max_z);
+    octomap::point3d min_point(min_x, min_y, min_z);
+    octomap::point3d max_point(max_x, max_y, max_z);
+
+    // fill in map dimensions
+    map.info.resolution = octree.getResolution();
+    map.info.width = (max_point.x() - min_point.x()) / map.info.resolution + 1;
+    map.info.height = (max_point.y() - min_point.y()) / map.info.resolution + 1;
+
+    map.info.origin.position.x = min_point.x() - map.info.resolution * 0.5;
+    map.info.origin.position.y = min_point.y() - map.info.resolution * 0.5;
+    map.info.origin.orientation.x = 0.;
+    map.info.origin.orientation.y = 0.;
+    map.info.origin.orientation.z = 0.;
+    map.info.origin.orientation.w = 1.;
+
+    // create CV matrix of proper size with 1 channel of 32 bit floats and init values to negative infinity
+    float ninf = -std::numeric_limits<float>::infinity();
+    cv::Mat height_map(map.info.height, map.info.width, CV_32FC1, ninf);
+
+    // iterate over tree leafs to create height map
+    octomap::point3d coord;
+    int x, y;
+    for(octomap::OcTree::leaf_iterator it = octree.begin_leafs(), end=octree.end_leafs(); it != end; ++it)
+    {
+        if (octree.isNodeOccupied(*it))
+        {
+            coord = it.getCoordinate();
+            x = (coord.x() - min_point.x()) / map.info.resolution;
+            y = (coord.y() - min_point.y()) / map.info.resolution;
+            if (height_map.at<float>(y, x) < coord.z())
+            {
+                height_map.at<float>(y, x) = coord.z();
+            }
+        }
+    }
+
+    // smooth height map
+    cv::Mat kernel = cv::getGaussianKernel(3, -1); // TODO make param for ksize
+    cv::filter2D(height_map, height_map, -1, kernel);
+
+    // get height gradient
+    cv::Mat gradient_x, gradient_y, gradient_map;
+    cv::Scharr(height_map, gradient_x, -1, 1, 0);
+    cv::convertScaleAbs(gradient_x, gradient_x);
+    cv::Scharr(height_map, gradient_y, -1, 0, 1);
+    cv::convertScaleAbs(gradient_y, gradient_y);
+    cv::addWeighted(gradient_x, 0.5, gradient_y, 0.5, 0, gradient_map);
+
+    // ensure correct size of map data vector
+    map.data.resize(map.info.width * map.info.height);
+    // fill in map data
+    for(y = 0; y < gradient_map.rows; ++y) {
+        for(x = 0; x < gradient_map.cols; ++x) {
+            map.data[y * map.info.width + x] = gradient_map.at<float>(y, x);
         }
     }
 }
@@ -423,7 +492,7 @@ void ROSPublisher::publishCameraPose()
 }
 
 /*
- * Publishes the previously built Octomap.
+ * Publishes the previously built Octomap. (called from the octomap worker thread)
  */
 void ROSPublisher::publishOctomap()
 {
@@ -507,7 +576,8 @@ void ROSPublisher::publishProjectedMap()
     msgOccupancy.header.frame_id = ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED;
     msgOccupancy.header.stamp = ros::Time::now();
 
-    octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
+    //octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
+    octomapToOccupancyGridFancy(octomap_, msgOccupancy);
 
     projected_map_pub_.publish(msgOccupancy);
 
