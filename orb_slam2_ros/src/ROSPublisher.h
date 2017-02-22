@@ -41,6 +41,7 @@ public:
     static constexpr const char *DEFAULT_MAP_FRAME = "/orb_slam2/world";
     static constexpr const char *DEFAULT_MAP_FRAME_ADJUSTED = "/orb_slam2/map";
     static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
+    static constexpr const char *DEFAULT_BASE_FRAME = "ORB_base_link";
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
     static constexpr const float STATE_REPUBLISH_WAIT_RATE = 20;  // re-publish state @ 20 Hz
     static constexpr const float PROJECTION_MIN_HEIGHT = -10;

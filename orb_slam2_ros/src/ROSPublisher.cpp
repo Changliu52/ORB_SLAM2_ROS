@@ -226,7 +226,7 @@ void ROSPublisher::octomapWorker()
         // try to get a TF from UAV base to camera (in ORB space)
         try {
             tf::StampedTransform transform_in_target_frame;
-            tf_listener_.lookupTransform("ORB_base_link", ROSPublisher::DEFAULT_CAMERA_FRAME, ros::Time(0), transform_in_target_frame);
+            tf_listener_.lookupTransform(ROSPublisher::DEFAULT_BASE_FRAME, ROSPublisher::DEFAULT_CAMERA_FRAME, ros::Time(0), transform_in_target_frame);
             frame = octomap::poseTfToOctomap(transform_in_target_frame);
             got_tf = true;
         } catch (tf::TransformException &ex) {
@@ -236,7 +236,7 @@ void ROSPublisher::octomapWorker()
 
         // TODO temporary workaround for buggy octomap
         if (!got_tf) {
-            std::cout << "no TF yet: skipping update to avoid clear()" << std::endl;
+            ROS_INFO_STREAM("no TF yet: skipping update to avoid clear()" << std::endl);
             continue;
         }
         //clear_octomap_ |= (got_tf != octomap_tf_based_);
@@ -245,7 +245,7 @@ void ROSPublisher::octomapWorker()
         {
             clear_octomap_ = false; // TODO: mutex?
             // TODO: temporary octomap safety check
-            std::cout << "octomap clear requested, but this shouldn't happen: FAILING" << std::endl;
+            ROS_INFO_STREAM("octomap clear requested, but this shouldn't happen: FAILING" << std::endl);
             assert(false);
             octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
 
@@ -504,7 +504,7 @@ void ROSPublisher::publishOctomap()
                                      ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED :
                                      ROSPublisher::DEFAULT_MAP_FRAME;
         msgOctomap.header.stamp = ros::Time::now();
-        if (octomap_msgs::fullMapToMsg(octomap_, msgOctomap))   // TODO: full/binary...?
+        if (octomap_msgs::binaryMapToMsg(octomap_, msgOctomap))   // TODO: full/binary...?
         {
             auto tn = std::chrono::system_clock::now();
             auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(tn - t0);
