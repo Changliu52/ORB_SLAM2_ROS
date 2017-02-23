@@ -204,6 +204,7 @@ void ROSPublisher::stashMapPoints(bool all_map_points)
  */
 void ROSPublisher::octomapWorker()
 {
+
     static std::chrono::system_clock::time_point this_cycle_time;
 
     octomap::pose6d frame;
@@ -211,11 +212,13 @@ void ROSPublisher::octomapWorker()
     octomap::point3d origin;
 
     // wait until ORB_SLAM 2 is up and running
+    ROS_INFO("octomapWorker thread waiting for ORBState OK");
     while (orb_state_.state != orb_slam2::ORBState::OK)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
 
+    ROS_INFO("octomapWorker thread starting to work (ORBState is OK)");
     // main thread loop
     while (!isStopped())
     {
@@ -234,18 +237,20 @@ void ROSPublisher::octomapWorker()
             got_tf = false;
         }
 
+/*
         // TODO temporary workaround for buggy octomap
         if (!got_tf) {
-            ROS_INFO_STREAM("no TF yet: skipping update to avoid clear()" << std::endl);
+            ROS_INFO("no TF yet: skipping update to avoid clear()");
             continue;
         }
+*/
         //clear_octomap_ |= (got_tf != octomap_tf_based_);
 
         if (clear_octomap_)
         {
             clear_octomap_ = false; // TODO: mutex?
             // TODO: temporary octomap safety check
-            ROS_INFO_STREAM("octomap clear requested, but this shouldn't happen: FAILING" << std::endl);
+            ROS_INFO("octomap clear requested, but this shouldn't happen: FAILING");
             assert(false);
             octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
 
@@ -269,6 +274,8 @@ void ROSPublisher::octomapWorker()
 
         std::this_thread::sleep_until(this_cycle_time + std::chrono::milliseconds((int) (1000. / ROSPublisher::OCTOMAP_RATE)));
     }
+
+    ROS_INFO("octomapWorker thread stopped");
 }
 
 /*
@@ -427,7 +434,6 @@ static const char *stateDescription(orb_slam2::ORBState orb_state)
 static const orb_slam2::ORBState toORBStateMessage(Tracking::eTrackingState trackingState)
 {
     orb_slam2::ORBState state_msg;
-    state_msg.header.stamp = ros::Time::now();
     state_msg.state = orb_slam2::ORBState::UNKNOWN;
 
     switch (trackingState) {
@@ -523,19 +529,18 @@ void ROSPublisher::publishOctomap()
  */
 void ROSPublisher::publishState(Tracking *tracking)
 {
+    if (tracking != NULL) {
+        // save state from tracking, even if there are no subscribers
+        orb_state_ = toORBStateMessage(tracking->mState);
+    }
+
     if (state_pub_.getNumSubscribers() > 0)
     {
         // publish state as ORBState int
-        if (tracking == NULL)
-        {
-            // re-publish old state
-            orb_state_.header.stamp = ros::Time::now();
-        } else {
-            // get state from tracking
-            orb_state_ = toORBStateMessage(tracking->mState);
-        }
+        orb_state_.header.stamp = ros::Time::now();
         state_pub_.publish(orb_state_);
     }
+
     if (state_desc_pub_.getNumSubscribers() > 0)
     {
         // publish state as string
@@ -603,8 +608,10 @@ void ROSPublisher::Run()
 
             stashMapPoints(); // store current reference map points for the octomap worker
         }
+
         if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / STATE_REPUBLISH_WAIT_RATE))
         {
+            // it's time to re-publish ORBState
             publishState(NULL);
         }
     }
