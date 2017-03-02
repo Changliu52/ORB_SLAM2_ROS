@@ -353,6 +353,67 @@ void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msg
     }
 }
 
+void erodeNaN(cv::Mat &matrix, int n)
+{
+    cv::Mat matrix_old = matrix.clone();
+
+    int nb_erosions = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        for (int x = 0; x < matrix.cols; ++x)
+        {
+            for (int y = 0; y < matrix.rows; ++y)
+            {
+                float current_value = matrix_old.at<float>(y, x);
+                if (current_value != current_value) // is NaN
+                {
+                    int nb_values = 0;
+                    float sum = 0;
+                    for (int dx = -1; dx < 2; ++dx)
+                    {
+                        for (int dy = -1; dy < 2; ++dy)
+                        {
+                            if ((x + dx >= 0) && (y + dy >= 0) && (x + dx < matrix.cols) && (y + dy < matrix.rows))
+                            {
+                                current_value = matrix_old.at<float>(y + dy, x + dx);
+                                if (current_value == current_value) // is not NaN
+                                {
+                                    sum += current_value;
+                                    nb_values++;
+                                }
+                            }
+                        }
+                    }
+                    if (nb_values > 0)
+                    {
+                        matrix.at<float>(y, x) = sum / nb_values;
+                        nb_erosions++;
+                    }
+                }
+            }
+        }
+    }
+    //std::cout << "performed " << nb_erosions << " erosions" << std::endl;
+}
+
+/*
+ * Writes a fully contrast-scaled version of a 2-dimensional 1-channel matrix into a grayscale image file.
+ */
+void grayscaleToFile(const string& filename, const cv::Mat& img)
+{
+    double min_value = 0, max_value = 0;
+    cv::minMaxLoc(img, &min_value, &max_value, 0, 0, img == img); // img==img masks NaNs
+
+    //std::cout << filename << ": min=" << min_value << " max=" << max_value << std::endl;
+
+    cv::Mat out;
+    double scale = 255. / (max_value - min_value);
+    double shift = scale * -min_value;
+    img.convertTo(out, CV_8U, scale, shift);
+    out.setTo(128, img != img); // set NaN to gray
+    cv::imwrite(filename, out);
+}
+
 void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map)
 {
     // get tree dimensions
@@ -375,13 +436,13 @@ void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, na
     map.info.origin.orientation.z = 0.;
     map.info.origin.orientation.w = 1.;
 
-    // create CV matrix of proper size with 1 channel of 32 bit floats and init values to negative infinity
-    float ninf = -std::numeric_limits<float>::infinity();
-    cv::Mat height_map(map.info.height, map.info.width, CV_32FC1, ninf);
+    // create CV matrix of proper size with 1 channel of 32 bit floats and init values to NaN for "unknown"
+    cv::Mat height_map(map.info.height, map.info.width, CV_32FC1, NAN);
 
     // iterate over tree leafs to create height map
     octomap::point3d coord;
     int x, y;
+    float z;
     for(octomap::OcTree::leaf_iterator it = octree.begin_leafs(), end=octree.end_leafs(); it != end; ++it)
     {
         if (octree.isNodeOccupied(*it))
@@ -389,24 +450,55 @@ void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, na
             coord = it.getCoordinate();
             x = (coord.x() - min_point.x()) / map.info.resolution;
             y = (coord.y() - min_point.y()) / map.info.resolution;
-            if (height_map.at<float>(y, x) < coord.z())
+            z = coord.z(); // z-axis is facing UP
+            float current_height = height_map.at<float>(y, x);
+            if (current_height != current_height || z > current_height)
             {
-                height_map.at<float>(y, x) = coord.z();
+                height_map.at<float>(y, x) = z;
             }
         }
     }
 
+    //grayscaleToFile("heightmap-raw.png", height_map);
+
+    // erode NaNs
+    erodeNaN(height_map, 1);
+
+    cv::Mat mask_unknown = height_map != height_map;
+
+    erodeNaN(height_map, 1);
+
+    //grayscaleToFile("heightmap-eroded.png", height_map);
+
     // smooth height map
-    cv::Mat kernel = cv::getGaussianKernel(3, -1); // TODO make param for ksize
-    cv::filter2D(height_map, height_map, -1, kernel);
+    //cv::Mat kernel = cv::getGaussianKernel(3, -1); // TODO make param for ksize
+    //cv::sepFilter2D(height_map, height_map, -1, kernel, kernel);
+
+    //grayscaleToFile("heightmap-smoothed.png", height_map);
+
+    //cv::minMaxLoc(height_map, &min_z, &max_z);
+
+    height_map.setTo(0, height_map != height_map); // replace NaNs
 
     // get height gradient
     cv::Mat gradient_x, gradient_y, gradient_map;
-    cv::Scharr(height_map, gradient_x, -1, 1, 0);
-    cv::convertScaleAbs(gradient_x, gradient_x);
-    cv::Scharr(height_map, gradient_y, -1, 0, 1);
-    cv::convertScaleAbs(gradient_y, gradient_y);
+    cv::Scharr(height_map, gradient_x, CV_32F, 1, 0, 1. / 16.);
+    gradient_x = cv::abs(gradient_x);
+    //grayscaleToFile("gradientmap-x.png", gradient_x);
+    cv::Scharr(height_map, gradient_y, CV_32F, 0, 1, 1. / 16.);
+    gradient_y = cv::abs(gradient_y);
+    //grayscaleToFile("gradientmap-y.png", gradient_y);
     cv::addWeighted(gradient_x, 0.5, gradient_y, 0.5, 0, gradient_map);
+
+    //grayscaleToFile("gradientmap.png", gradient_map);
+
+    float threshold_lower = map.info.resolution, threshold_upper = map.info.resolution * 2; // TODO parameterize
+
+    // map data probabilities are in range [0,100].  Unknown is -1.
+    gradient_map.setTo(threshold_upper, gradient_map > threshold_upper); // clip obstacles
+    gradient_map.setTo(threshold_lower, gradient_map < threshold_lower); // clip free space
+    gradient_map = (gradient_map - threshold_lower) / threshold_upper * 100.0; // convert to map values
+    gradient_map.setTo(-1, mask_unknown); //replace NaN
 
     // ensure correct size of map data vector
     map.data.resize(map.info.width * map.info.height);
