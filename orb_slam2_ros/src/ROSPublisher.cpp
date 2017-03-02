@@ -353,14 +353,18 @@ void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msg
     }
 }
 
-void erodeNaN(cv::Mat &matrix, int n)
+/*
+ * Replaces NaN values with the mean of their 8 neighbors whenever possible.
+ * Does it n times. Returns number of erosions.
+ */
+int erodeNaN(cv::Mat &matrix, int n)
 {
-    cv::Mat matrix_old = matrix.clone();
+    cv::Mat matrix_old = matrix.clone(); // use original matrix when looking up neighbors
 
-    int nb_erosions = 0;
-    for (int i = 0; i < n; ++i)
+    int nb_erosions = 0; // rather for information/debug purposes
+    for (int i = 0; i < n; ++i) // erode n times
     {
-        for (int x = 0; x < matrix.cols; ++x)
+        for (int x = 0; x < matrix.cols; ++x) // iterate over matrix
         {
             for (int y = 0; y < matrix.rows; ++y)
             {
@@ -369,11 +373,11 @@ void erodeNaN(cv::Mat &matrix, int n)
                 {
                     int nb_values = 0;
                     float sum = 0;
-                    for (int dx = -1; dx < 2; ++dx)
+                    for (int dx = -1; dx < 2; ++dx) // iterate over neighborhood
                     {
                         for (int dy = -1; dy < 2; ++dy)
                         {
-                            if ((x + dx >= 0) && (y + dy >= 0) && (x + dx < matrix.cols) && (y + dy < matrix.rows))
+                            if ((x + dx >= 0) && (y + dy >= 0) && (x + dx < matrix.cols) && (y + dy < matrix.rows)) // within matrix bounds
                             {
                                 current_value = matrix_old.at<float>(y + dy, x + dx);
                                 if (current_value == current_value) // is not NaN
@@ -384,7 +388,7 @@ void erodeNaN(cv::Mat &matrix, int n)
                             }
                         }
                     }
-                    if (nb_values > 0)
+                    if (nb_values > 0) // there were non-NaN neighbors
                     {
                         matrix.at<float>(y, x) = sum / nb_values;
                         nb_erosions++;
@@ -393,7 +397,7 @@ void erodeNaN(cv::Mat &matrix, int n)
             }
         }
     }
-    //std::cout << "performed " << nb_erosions << " erosions" << std::endl;
+    return nb_erosions;
 }
 
 /*
@@ -402,9 +406,7 @@ void erodeNaN(cv::Mat &matrix, int n)
 void grayscaleToFile(const string& filename, const cv::Mat& img)
 {
     double min_value = 0, max_value = 0;
-    cv::minMaxLoc(img, &min_value, &max_value, 0, 0, img == img); // img==img masks NaNs
-
-    //std::cout << filename << ": min=" << min_value << " max=" << max_value << std::endl;
+    cv::minMaxLoc(img, &min_value, &max_value, 0, 0, img == img); // img==img masks out NaNs
 
     cv::Mat out;
     double scale = 255. / (max_value - min_value);
@@ -459,46 +461,32 @@ void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, na
         }
     }
 
-    //grayscaleToFile("heightmap-raw.png", height_map);
-
-    // erode NaNs
+    // fill in small holes
     erodeNaN(height_map, 1);
+    // store where height is unknown
+    cv::Mat mask_unknown = height_map != height_map; // is NaN
 
-    cv::Mat mask_unknown = height_map != height_map;
+    erodeNaN(height_map, 1); // avoid discontinuity (and thus a "wall") around known area
 
-    erodeNaN(height_map, 1);
-
-    //grayscaleToFile("heightmap-eroded.png", height_map);
-
-    // smooth height map
-    //cv::Mat kernel = cv::getGaussianKernel(3, -1); // TODO make param for ksize
-    //cv::sepFilter2D(height_map, height_map, -1, kernel, kernel);
-
-    //grayscaleToFile("heightmap-smoothed.png", height_map);
-
-    //cv::minMaxLoc(height_map, &min_z, &max_z);
-
-    height_map.setTo(0, height_map != height_map); // replace NaNs
+    height_map.setTo(0, height_map != height_map); // get rid of all NaN trouble makers
 
     // get height gradient
     cv::Mat gradient_x, gradient_y, gradient_map;
     cv::Scharr(height_map, gradient_x, CV_32F, 1, 0, 1. / 16.);
-    gradient_x = cv::abs(gradient_x);
-    //grayscaleToFile("gradientmap-x.png", gradient_x);
     cv::Scharr(height_map, gradient_y, CV_32F, 0, 1, 1. / 16.);
-    gradient_y = cv::abs(gradient_y);
-    //grayscaleToFile("gradientmap-y.png", gradient_y);
-    cv::addWeighted(gradient_x, 0.5, gradient_y, 0.5, 0, gradient_map);
+    cv::addWeighted(cv::abs(gradient_x), 0.5, cv::abs(gradient_y), 0.5, 0, gradient_map);
 
-    //grayscaleToFile("gradientmap.png", gradient_map);
-
+    // height slope thresholds:
+    // values < lower are considered free space
+    // values > upper are considered obstacle
+    // everything inbetween is literally a gray-zone
     float threshold_lower = map.info.resolution, threshold_upper = map.info.resolution * 2; // TODO parameterize
 
     // map data probabilities are in range [0,100].  Unknown is -1.
     gradient_map.setTo(threshold_upper, gradient_map > threshold_upper); // clip obstacles
     gradient_map.setTo(threshold_lower, gradient_map < threshold_lower); // clip free space
-    gradient_map = (gradient_map - threshold_lower) / threshold_upper * 100.0; // convert to map values
-    gradient_map.setTo(-1, mask_unknown); //replace NaN
+    gradient_map = (gradient_map - threshold_lower) / threshold_upper * 100.0; // convert into map data range
+    gradient_map.setTo(-1, mask_unknown); //replace NaNs
 
     // ensure correct size of map data vector
     map.data.resize(map.info.width * map.info.height);
@@ -674,7 +662,10 @@ void ROSPublisher::publishProjectedMap()
     msgOccupancy.header.stamp = ros::Time::now();
 
     //octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
+    auto t0 = std::chrono::system_clock::now();
     octomapToOccupancyGridFancy(octomap_, msgOccupancy);
+    std::cout << "fancy time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t0).count() << " ms" << std::endl;
+
 
     projected_map_pub_.publish(msgOccupancy);
 
