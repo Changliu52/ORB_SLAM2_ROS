@@ -662,10 +662,7 @@ void ROSPublisher::publishProjectedMap()
     msgOccupancy.header.stamp = ros::Time::now();
 
     //octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
-    auto t0 = std::chrono::system_clock::now();
     octomapToOccupancyGridFancy(octomap_, msgOccupancy);
-    std::cout << "fancy time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - t0).count() << " ms" << std::endl;
-
 
     projected_map_pub_.publish(msgOccupancy);
 
