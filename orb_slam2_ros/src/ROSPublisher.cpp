@@ -160,16 +160,20 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
     octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
     projected_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, 10);
+    gradient_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("gradient_map", 5, 10);
     orb_state_.state = orb_slam2::ORBState::UNKNOWN;
 
     // initialize parameters
-    nh.param<double>("occupancy_projection_min_height", projectionMinHeight_, ROSPublisher::PROJECTION_MIN_HEIGHT);
-    nh.param<int>("occupancy_projection_nb_erosions", projection_nb_erosions_, ROSPublisher::PROJECTION_NB_EROSIONS);
-    nh.param<float>("occupancy_projection_low_slope", projection_low_slope_, ROSPublisher::PROJECTION_LOW_SLOPE);
-    nh.param<float>("occupancy_projection_high_slope", projection_high_slope_, ROSPublisher::PROJECTION_HIGH_SLOPE);
+    nh.param<double>("occupancy_projection_min_height", projection_min_height_, ROSPublisher::PROJECTION_MIN_HEIGHT);
+
+    nh.param<float>("occupancy_gradient_max_height", gradient_max_height_, ROSPublisher::GRADIENT_MAX_HEIGHT);
+    nh.param<int>("occupancy_gradient_nb_erosions", gradient_nb_erosions_, ROSPublisher::GRADIENT_NB_EROSIONS);
+    nh.param<float>("occupancy_gradient_low_slope", gradient_low_slope_, ROSPublisher::GRADIENT_LOW_SLOPE);
+    nh.param<float>("occupancy_gradient_high_slope", gradient_high_slope_, ROSPublisher::GRADIENT_HIGH_SLOPE);
 
     // TODO make more params configurable
 
+    // start octomap worker thread
     octomap_worker_thread_ = std::thread( [this] { octomapWorker(); } );
 }
 
@@ -265,6 +269,7 @@ void ROSPublisher::octomapWorker()
 
         publishOctomap();
         publishProjectedMap();
+        publishGradientMap();
 
         ROS_INFO("octomapWorker thread: finished cycle integrating %i pointcloud chunks.", pointcloud_chunks_stashed);
 
@@ -277,7 +282,7 @@ void ROSPublisher::octomapWorker()
 /*
  * Creates a 2D Occupancy Grid from the Octomap.
  */
-void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ )
+void ROSPublisher::octomapCutToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ )
 {
     map.info.resolution = octree.getResolution();
     double minX, minY, minZ;
@@ -415,7 +420,7 @@ void grayscaleToFile(const string& filename, const cv::Mat& img)
 /*
  * Constructs a 2-dimensional OccupancyGrid from an Octomap by evaluating its heightmap gradients.
  */
-void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, int nb_erosions, float low_slope, float high_slope)
+void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, float max_height, int nb_erosions, float low_slope, float high_slope)
 {
     // get tree dimensions
     double min_x, min_y, min_z;
@@ -452,10 +457,13 @@ void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree,
             x = (coord.x() - min_point.x()) / map.info.resolution;
             y = (coord.y() - min_point.y()) / map.info.resolution;
             z = coord.z(); // z-axis is facing UP
-            float current_height = height_map.at<float>(y, x);
-            if (current_height != current_height || z > current_height)
+            if (z <= max_height) // only consider voxels up to specified height (e.g. for building indoor maps)
             {
-                height_map.at<float>(y, x) = z;
+                float current_height = height_map.at<float>(y, x);
+                if (current_height != current_height || z > current_height)
+                {
+                    height_map.at<float>(y, x) = z;
+                }
             }
         }
     }
@@ -651,22 +659,41 @@ void ROSPublisher::publishImage(Tracking *tracking)
 }
 
 /*
- * Creates a 2D Occupancy Grid from the Octomap and publishes it.
+ * Creates a 2D OccupancyGrid from the Octomap by performing a cut through a previously specified z interval and publishes it.
  */
 void ROSPublisher::publishProjectedMap()
 {
-  static nav_msgs::OccupancyGrid msgOccupancy;
-  if (projected_map_pub_.getNumSubscribers() > 0)
-  {
-    msgOccupancy.header.frame_id = ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED;
-    msgOccupancy.header.stamp = ros::Time::now();
+    static nav_msgs::OccupancyGrid msg;
+    if (projected_map_pub_.getNumSubscribers() > 0)
+    {
+        msg.header.frame_id = octomap_tf_based_ ?
+                              ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED :
+                              ROSPublisher::DEFAULT_MAP_FRAME;
+        msg.header.stamp = ros::Time::now();
 
-    //octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
-    octomapGradientToOccupancyGrid(octomap_, msgOccupancy, projection_nb_erosions_, projection_low_slope_, projection_high_slope_);
+        octomapCutToOccupancyGrid(octomap_, msg, projection_min_height_, std::numeric_limits<double>::max());
 
-    projected_map_pub_.publish(msgOccupancy);
+        projected_map_pub_.publish(msg);
+    }
+}
 
-  }
+/*
+ * Creates a 2D OccupancyGrid from the Octomap by evaluating its heightmap gradients and publishes it.
+ */
+void ROSPublisher::publishGradientMap()
+{
+    static nav_msgs::OccupancyGrid msg;
+    if (gradient_map_pub_.getNumSubscribers() > 0)
+    {
+        msg.header.frame_id = octomap_tf_based_ ?
+                              ROSPublisher::DEFAULT_MAP_FRAME_ADJUSTED :
+                              ROSPublisher::DEFAULT_MAP_FRAME;
+        msg.header.stamp = ros::Time::now();
+
+        octomapGradientToOccupancyGrid(octomap_, msg, gradient_max_height_, gradient_nb_erosions_, gradient_low_slope_, gradient_high_slope_);
+
+        gradient_map_pub_.publish(msg);
+    }
 }
 
 void ROSPublisher::Run()
