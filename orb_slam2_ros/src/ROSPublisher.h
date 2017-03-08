@@ -43,8 +43,11 @@ public:
     static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
     static constexpr const char *DEFAULT_BASE_FRAME = "ORB_base_link";
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
-    static constexpr const float STATE_REPUBLISH_WAIT_RATE = 20;  // re-publish state @ 20 Hz
+    static constexpr const float ORBSTATE_REPUBLISH_RATE = 20;  // re-publish state @ 20 Hz
     static constexpr const float PROJECTION_MIN_HEIGHT = -10;
+    static constexpr const int   PROJECTION_NB_EROSIONS = 1;        // number of erosions performed before computing gradients
+    static constexpr const float PROJECTION_LOW_SLOPE = M_PI / 4.;  // lower bound for a slope being considered obstacle-ish
+    static constexpr const float PROJECTION_HIGH_SLOPE = M_PI / 3.; // lower bound for a slope being considered a full solid obstacle
     static constexpr const float OCTOMAP_RATE = 1;  // rate of octomap cycles (integrate MapPoints and publish)
 
     // `frequency` is max amount of messages emitted per second
@@ -83,7 +86,12 @@ private:
     bool clear_octomap_;
     std::thread octomap_worker_thread_;
 
+    // params for z-plane-based occupancy grid approach
     double projectionMinHeight_;
+    // params for gradient-based approach
+    int projection_nb_erosions_;
+    float projection_low_slope_;
+    float projection_high_slope_;
 
     tf::TransformListener tf_listener_;
 
@@ -98,7 +106,7 @@ private:
     }
     void octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, const double minZ_, const double maxZ_ );
 
-    void octomapToOccupancyGridFancy(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map);
+    void octomapGradientToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, int nb_erosions = PROJECTION_NB_EROSIONS, float low_slope = PROJECTION_LOW_SLOPE, float high_slope = PROJECTION_HIGH_SLOPE);
 
     void publishMap();
     void publishMapUpdates();

@@ -164,6 +164,10 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
 
     // initialize parameters
     nh.param<double>("occupancy_projection_min_height", projectionMinHeight_, ROSPublisher::PROJECTION_MIN_HEIGHT);
+    nh.param<int>("occupancy_projection_nb_erosions", projection_nb_erosions_, ROSPublisher::PROJECTION_NB_EROSIONS);
+    nh.param<float>("occupancy_projection_low_slope", projection_low_slope_, ROSPublisher::PROJECTION_LOW_SLOPE);
+    nh.param<float>("occupancy_projection_high_slope", projection_high_slope_, ROSPublisher::PROJECTION_HIGH_SLOPE);
+
     // TODO make more params configurable
 
     octomap_worker_thread_ = std::thread( [this] { octomapWorker(); } );
@@ -347,13 +351,13 @@ void ROSPublisher::octomapToOccupancyGrid(const octomap::OcTree& octree, nav_msg
 
 /*
  * Replaces NaN values with the mean of their 8 neighbors whenever possible.
- * Does it n times. Returns number of erosions.
+ * Does it n times. Returns number of eroded NaNs.
  */
 int erodeNaN(cv::Mat &matrix, int n)
 {
     cv::Mat matrix_old = matrix.clone(); // use original matrix when looking up neighbors
 
-    int nb_erosions = 0; // rather for information/debug purposes
+    int nb_eroded_cells = 0; // rather for information/debug purposes
     for (int i = 0; i < n; ++i) // erode n times
     {
         for (int x = 0; x < matrix.cols; ++x) // iterate over matrix
@@ -383,13 +387,13 @@ int erodeNaN(cv::Mat &matrix, int n)
                     if (nb_values > 0) // there were non-NaN neighbors
                     {
                         matrix.at<float>(y, x) = sum / nb_values;
-                        nb_erosions++;
+                        nb_eroded_cells++;
                     }
                 }
             }
         }
     }
-    return nb_erosions;
+    return nb_eroded_cells;
 }
 
 /*
@@ -408,7 +412,10 @@ void grayscaleToFile(const string& filename, const cv::Mat& img)
     cv::imwrite(filename, out);
 }
 
-void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map)
+/*
+ * Constructs a 2-dimensional OccupancyGrid from an Octomap by evaluating its heightmap gradients.
+ */
+void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree, nav_msgs::OccupancyGrid& map, int nb_erosions, float low_slope, float high_slope)
 {
     // get tree dimensions
     double min_x, min_y, min_z;
@@ -454,7 +461,7 @@ void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, na
     }
 
     // fill in small holes
-    erodeNaN(height_map, 1);
+    erodeNaN(height_map, nb_erosions);
     // store where height is unknown
     cv::Mat mask_unknown = height_map != height_map; // is NaN
 
@@ -472,7 +479,8 @@ void ROSPublisher::octomapToOccupancyGridFancy(const octomap::OcTree& octree, na
     // values < lower are considered free space
     // values > upper are considered obstacle
     // everything inbetween is literally a gray-zone
-    float threshold_lower = map.info.resolution, threshold_upper = map.info.resolution * 2; // TODO parameterize
+    float threshold_lower = sin(low_slope) / cos(low_slope) * map.info.resolution;
+    float threshold_upper = sin(high_slope) / cos(high_slope) * map.info.resolution;
 
     // map data probabilities are in range [0,100].  Unknown is -1.
     gradient_map.setTo(threshold_upper, gradient_map > threshold_upper); // clip obstacles
@@ -654,7 +662,7 @@ void ROSPublisher::publishProjectedMap()
     msgOccupancy.header.stamp = ros::Time::now();
 
     //octomapToOccupancyGrid(octomap_, msgOccupancy, ROSPublisher::PROJECTION_MIN_HEIGHT, std::numeric_limits<double>::max());
-    octomapToOccupancyGridFancy(octomap_, msgOccupancy);
+    octomapGradientToOccupancyGrid(octomap_, msgOccupancy, projection_nb_erosions_, projection_low_slope_, projection_high_slope_);
 
     projected_map_pub_.publish(msgOccupancy);
 
@@ -681,7 +689,7 @@ void ROSPublisher::Run()
             stashMapPoints(); // store current reference map points for the octomap worker
         }
 
-        if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / STATE_REPUBLISH_WAIT_RATE))
+        if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / ORBSTATE_REPUBLISH_RATE))
         {
             // it's time to re-publish ORBState
             publishState(NULL);
