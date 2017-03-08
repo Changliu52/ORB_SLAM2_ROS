@@ -177,24 +177,25 @@ void ROSPublisher::stashMapPoints(bool all_map_points)
 {
     std::vector<MapPoint*> map_points;
 
+    pointcloud_map_points_mutex_.lock();
+
     if (all_map_points || GetMap()->GetLastBigChangeIdx() > lastBigMapChange_)
     {
         map_points = GetMap()->GetAllMapPoints();
         lastBigMapChange_ = GetMap()->GetLastBigChangeIdx();
-
-        // TODO: temporarily disabled due to octomap clear() bug
-        //clear_octomap_ = true;
+        clear_octomap_ = true;
+        pointcloud_map_points_.clear();
     } else {
         map_points = GetMap()->GetReferenceMapPoints();
     }
 
-    pointcloud_map_points_mutex_.lock();
     for (MapPoint *map_point : map_points) {
         if (map_point->isBad())
             continue;
         cv::Mat pos = map_point->GetWorldPos();
         pointcloud_map_points_.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
     }
+
     pointcloud_chunks_stashed_++;
     pointcloud_map_points_mutex_.unlock();
 }
@@ -237,22 +238,13 @@ void ROSPublisher::octomapWorker()
             got_tf = false;
         }
 
-/*
-        // TODO temporary workaround for buggy octomap
-        if (!got_tf) {
-            ROS_INFO("no TF yet: skipping update to avoid clear()");
-            continue;
-        }
-*/
-        //clear_octomap_ |= (got_tf != octomap_tf_based_);
+        clear_octomap_ |= (got_tf != octomap_tf_based_); // clear whenever TF mode changes
 
         if (clear_octomap_)
         {
             clear_octomap_ = false; // TODO: mutex?
-            // TODO: temporary octomap safety check
-            ROS_INFO("octomap clear requested, but this shouldn't happen: FAILING");
-            assert(false);
             octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
+            ROS_INFO("octomap cleared");
 
             // TODO: test loop-closing properly
             // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
