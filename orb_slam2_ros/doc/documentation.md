@@ -55,9 +55,9 @@ Thus, setting `occupancy_gradient_low_slope` = `occupancy_gradient_high_slope` r
 
 To get the slopes at all positions, two gradient maps are computed using the horizontal and vertical Scharr filter, which is a high-pass filter using the kernel
 ```
-         [[ -3, 0,  -3],
-k = 1/16  [-10, 0, -10],
-          [ -3, 0,  -3]]
+         [[ 3, 0,  -3],
+k = 1/16  [10, 0, -10],
+          [ 3, 0,  -3]]
 ```
 (or flipped by 90° respectively).
 Their absolute values are added into a combined gradient map and the corresponding gradient values are computed from slope values using the equation:
