@@ -32,6 +32,7 @@
 
 #include<opencv2/core/core.hpp>
 
+#include <boost/algorithm/string.hpp> // tolower
 #include "System.h"
 #include "ROSPublisher.h"
 #include "utils.h"
@@ -71,6 +72,9 @@ int main(int argc, char **argv)
     ImageGrabber igb(&SLAM);
 
     stringstream ss(argv[3]);
+    std::string s_lower = ss.str();
+    boost::algorithm::to_lower(s_lower);
+    ss.str(s_lower);
 	ss >> boolalpha >> igb.do_rectify;
 
     if(igb.do_rectify)
