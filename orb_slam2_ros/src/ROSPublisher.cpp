@@ -254,7 +254,6 @@ void ROSPublisher::octomapWorker()
             octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
             ROS_INFO("octomap cleared");
 
-            // TODO: test loop-closing properly
             // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
         }
 
@@ -481,7 +480,7 @@ void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree,
     cv::Mat gradient_x, gradient_y, gradient_map;
     cv::Scharr(height_map, gradient_x, CV_32F, 1, 0, 1. / 16.);
     cv::Scharr(height_map, gradient_y, CV_32F, 0, 1, 1. / 16.);
-    cv::addWeighted(cv::abs(gradient_x), 0.5, cv::abs(gradient_y), 0.5, 0, gradient_map);
+    cv::addWeighted(cv::abs(gradient_x), 0.5, cv::abs(gradient_y), 0.5, 0, gradient_map); // TODO 0.5 rly?
 
     // height slope thresholds:
     // values < lower are considered free space
