@@ -493,7 +493,7 @@ void ROSPublisher::octomapGradientToOccupancyGrid(const octomap::OcTree& octree,
     // map data probabilities are in range [0,100].  Unknown is -1.
     gradient_map.setTo(threshold_upper, gradient_map > threshold_upper); // clip obstacles
     gradient_map.setTo(threshold_lower, gradient_map < threshold_lower); // clip free space
-    gradient_map = (gradient_map - threshold_lower) / threshold_upper * 100.0; // convert into map data range
+    gradient_map = (gradient_map - threshold_lower) / (threshold_upper - threshold_lower) * 100.0; // convert into map data range
     gradient_map.setTo(-1, mask_unknown); //replace NaNs
 
     // ensure correct size of map data vector
