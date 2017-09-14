@@ -140,6 +140,17 @@ sensor_msgs::PointCloud2 convertToPCL2(const std::vector<MapPoint*> &map_points)
     return msg;
 }
 
+/*
+ * Returns a ROS parameter as generic type, defaulting to a given value if it is unspecified.
+ */
+template<typename T>
+T getROSParam(ros::NodeHandle nh, std::string param_name, T default_value)
+{
+    T result;
+    nh.param<T>(param_name, result, default_value);
+    return result;
+}
+
 
 ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     IMapPublisher(map),
@@ -148,22 +159,15 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     pub_rate_(frequency),
     lastBigMapChange_(-1),
     octomap_tf_based_(false),
-    clear_octomap_(false),
+    octomap_(getROSParam<float>(nh, "octomap_resolution", ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)),
     pointcloud_chunks_stashed_(0),
-    octomap_(ROSPublisher::DEFAULT_OCTOMAP_RESOLUTION)
+    clear_octomap_(false)
 {
-    // initialize publishers
-    map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
-    map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
-    image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
-    state_pub_ = nh_.advertise<orb_slam2::ORBState>("state", 10);
-    state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
-    octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
-    projected_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, 10);
-    gradient_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("gradient_map", 5, 10);
     orb_state_.state = orb_slam2::ORBState::UNKNOWN;
 
     // initialize parameters
+    nh.param<bool>("octomap_enabled", octomap_enabled_, true);
+
     nh.param<double>("occupancy_projection_min_height", projection_min_height_, ROSPublisher::PROJECTION_MIN_HEIGHT);
 
     nh.param<float>("occupancy_gradient_max_height", gradient_max_height_, ROSPublisher::GRADIENT_MAX_HEIGHT);
@@ -171,10 +175,23 @@ ROSPublisher::ROSPublisher(Map *map, double frequency, ros::NodeHandle nh) :
     nh.param<float>("occupancy_gradient_low_slope", gradient_low_slope_, ROSPublisher::GRADIENT_LOW_SLOPE);
     nh.param<float>("occupancy_gradient_high_slope", gradient_high_slope_, ROSPublisher::GRADIENT_HIGH_SLOPE);
 
+    // initialize publishers
     // TODO make more params configurable
+    map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 3);
+    map_updates_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_updates", 3);
+    image_pub_ = nh_.advertise<sensor_msgs::Image>("frame", 5);
+    state_pub_ = nh_.advertise<orb_slam2::ORBState>("state", 10);
+    state_desc_pub_ = nh_.advertise<std_msgs::String>("state_description", 10);
 
-    // start octomap worker thread
-    octomap_worker_thread_ = std::thread( [this] { octomapWorker(); } );
+    if (octomap_enabled_)
+    {
+        octomap_pub_ = nh_.advertise<octomap_msgs::Octomap>("octomap", 3);
+        projected_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, 10);
+        gradient_map_pub_ = nh.advertise<nav_msgs::OccupancyGrid>("gradient_map", 5, 10);
+
+        // start octomap worker thread
+        octomap_worker_thread_ = std::thread( [this] { octomapWorker(); } );
+    }
 }
 
 /*
@@ -712,7 +729,10 @@ void ROSPublisher::Run()
             publishMapUpdates();
             publishCameraPose();
 
-            stashMapPoints(); // store current reference map points for the octomap worker
+            if (octomap_enabled_)
+            {
+                stashMapPoints(); // store current reference map points for the octomap worker
+            }
         }
 
         if (ros::Time::now() >= last_state_publish_time_ + ros::Duration(1. / ORBSTATE_REPUBLISH_RATE))

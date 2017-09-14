@@ -81,6 +81,7 @@ private:
     octomap::OcTree octomap_;
     tf::Vector3 camera_position_;
 
+    bool octomap_enabled_;
     octomap::Pointcloud pointcloud_map_points_;
     std::mutex pointcloud_map_points_mutex_;
     int pointcloud_chunks_stashed_;
