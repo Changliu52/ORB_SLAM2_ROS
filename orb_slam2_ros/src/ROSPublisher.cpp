@@ -210,8 +210,10 @@ void ROSPublisher::stashMapPoints(bool all_map_points)
         lastBigMapChange_ = GetMap()->GetLastBigChangeIdx();
         clear_octomap_ = true;
         pointcloud_map_points_.clear();
+        pointcloud_chunks_stashed_ = 1;
     } else {
         map_points = GetMap()->GetReferenceMapPoints();
+        pointcloud_chunks_stashed_++;
     }
 
     for (MapPoint *map_point : map_points) {
@@ -221,7 +223,6 @@ void ROSPublisher::stashMapPoints(bool all_map_points)
         pointcloud_map_points_.push_back(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
     }
 
-    pointcloud_chunks_stashed_++;
     pointcloud_map_points_mutex_.unlock();
 }
 
@@ -238,13 +239,13 @@ void ROSPublisher::octomapWorker()
     octomap::point3d origin;
 
     // wait until ORB_SLAM 2 is up and running
-    ROS_INFO("octomapWorker thread waiting for ORBState OK");
+    ROS_INFO("octomapWorker thread: waiting for ORBState OK");
     while (orb_state_.state != orb_slam2::ORBState::OK)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
 
-    ROS_INFO("octomapWorker thread starting to work (ORBState is OK)");
+    ROS_INFO("octomapWorker thread: starting to work (ORBState is OK)");
     // main thread loop
     while (!isStopped())
     {
@@ -263,36 +264,49 @@ void ROSPublisher::octomapWorker()
             got_tf = false;
         }
 
-        clear_octomap_ |= (got_tf != octomap_tf_based_); // clear whenever TF mode changes
-
-        if (clear_octomap_)
+        if (got_tf || ROSPublisher::OCTOMAP_REBUILD)
         {
-            clear_octomap_ = false; // TODO: mutex?
-            octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
-            ROS_INFO("octomap cleared");
+            clear_octomap_ |= (got_tf != octomap_tf_based_); // clear whenever TF mode changes
 
-            // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
+            if (clear_octomap_)
+            {
+                octomap_.clear(); // WARNING: causes ugly segfaults in octomap 1.8.0
+                ROS_INFO("octomapWorker thread: octomap cleared, rebuilding...");
+
+                // TODO: if pointcloud is supposed to be a lidar scan result, this is problematic (multiple hits on one beam/previous hits getting overwritten etc.)
+                stashMapPoints(true); // stash whole map
+                clear_octomap_ = false; // TODO: mutex?
+            }
+
+            pointcloud_map_points_mutex_.lock();
+            octomap_.insertPointCloud(pointcloud_map_points_, origin, frame);
+            pointcloud_map_points_.clear();
+            int pointcloud_chunks_stashed = pointcloud_chunks_stashed_;
+            pointcloud_chunks_stashed_ = 0;
+            pointcloud_map_points_mutex_.unlock();
+
+            octomap_tf_based_ = got_tf;
+
+            publishOctomap();
+            publishProjectedMap();
+            publishGradientMap();
+
+            ROS_INFO("octomapWorker thread: finished cycle integrating %i pointcloud chunks.", pointcloud_chunks_stashed);
+        }
+        else
+        {
+            ROS_INFO("octomapWorker thread: missing camera TF, losing %i pointcloud chunks.", pointcloud_chunks_stashed_);
+            pointcloud_map_points_mutex_.lock();
+            pointcloud_map_points_.clear();
+            pointcloud_chunks_stashed_ = 0;
+            pointcloud_map_points_mutex_.unlock();
         }
 
-        pointcloud_map_points_mutex_.lock();
-        octomap_.insertPointCloud(pointcloud_map_points_, origin, frame);
-        pointcloud_map_points_.clear();
-        int pointcloud_chunks_stashed = pointcloud_chunks_stashed_;
-        pointcloud_chunks_stashed_ = 0;
-        pointcloud_map_points_mutex_.unlock();
-
-        octomap_tf_based_ = got_tf;
-
-        publishOctomap();
-        publishProjectedMap();
-        publishGradientMap();
-
-        ROS_INFO("octomapWorker thread: finished cycle integrating %i pointcloud chunks.", pointcloud_chunks_stashed);
 
         std::this_thread::sleep_until(this_cycle_time + std::chrono::milliseconds((int) (1000. / ROSPublisher::OCTOMAP_RATE)));
     }
 
-    ROS_INFO("octomapWorker thread stopped");
+    ROS_INFO("octomapWorker thread: stopped");
 }
 
 /*

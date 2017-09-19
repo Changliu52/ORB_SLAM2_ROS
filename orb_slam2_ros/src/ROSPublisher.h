@@ -43,13 +43,14 @@ public:
     static constexpr const char *DEFAULT_CAMERA_FRAME = "/orb_slam2/camera";
     static constexpr const char *DEFAULT_BASE_FRAME = "ORB_base_link";
     static constexpr const float DEFAULT_OCTOMAP_RESOLUTION = 0.1;
-    static constexpr const float ORBSTATE_REPUBLISH_RATE = 20;  // re-publish state @ 20 Hz
+    static constexpr const float ORBSTATE_REPUBLISH_RATE = 20;    // re-publish state @ 20 Hz
     static constexpr const float PROJECTION_MIN_HEIGHT = -10;
     static constexpr const float GRADIENT_MAX_HEIGHT = 0.;        // maximal voxel-z to consider in gradient-based projection
     static constexpr const int   GRADIENT_NB_EROSIONS = 1;        // number of erosions performed before computing gradients
     static constexpr const float GRADIENT_LOW_SLOPE = M_PI / 4.;  // lower bound for a slope being considered obstacle-ish
     static constexpr const float GRADIENT_HIGH_SLOPE = M_PI / 3.; // lower bound for a slope being considered a full solid obstacle
-    static constexpr const float OCTOMAP_RATE = 1;  // rate of octomap cycles (integrate MapPoints and publish)
+    static constexpr const float OCTOMAP_RATE = 1;                // rate of octomap cycles (integrate MapPoints and publish)
+    static constexpr const bool  OCTOMAP_REBUILD = false;         // clear octomap when tracking is lost and rebuild
 
     // `frequency` is max amount of messages emitted per second
     explicit ROSPublisher(
