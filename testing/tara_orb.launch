@@ -11,7 +11,7 @@
       <param name="cameraRight_info_url" type="string" value="file:/${ROS_HOME}/camera_info/cameraRight.yaml" />
      </node>
 
-	<node pkg="orb_slam2_ros" type="Stereo" name="slam" args="$(find orb_slam2_lib)/Vocabulary/ORBvoc.txt $(find orb_slam2_ros)/settings/taracali_orb.yaml true" output="screen">
+	<node pkg="orb_slam2" type="Stereo" name="slam" args="$(find orb_slam2_lib)/Vocabulary/ORBvoc.txt $(find orb_slam2)/settings/taracali_orb.yaml true" output="screen">
 		
 	</node>
     </launch>
