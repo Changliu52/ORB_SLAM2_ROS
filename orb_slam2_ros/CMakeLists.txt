@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(orb_slam2)
+project(orb_slam2_ros)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall  -O3 -march=native ")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall  -O3 -march=native")
@@ -41,6 +41,12 @@ include_directories(
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/../orb_slam2_lib
   ${PROJECT_SOURCE_DIR}/../orb_slam2_lib/include
+)
+
+LINK_DIRECTORIES(
+  ${PROJECT_SOURCE_DIR}/../orb_slam2_lib/Thirdparty/DBoW2/lib
+  ${PROJECT_SOURCE_DIR}/../orb_slam2_lib/Thirdparty/g2o/lib
+  ${PROJECT_SOURCE_DIR}/../orb_slam2_lib/build/devel/lib
 )
 
 set(LIBS

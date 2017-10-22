@@ -1,0 +1,17 @@
+<!--XML-->
+    <launch>
+     <node ns="camera" pkg="uvc_camera" type="tara_node" name="tara" output="screen" required="true">
+      <param name="width" type="int" value="640" />
+      <param name="height" type="int" value="480" />
+      <param name="fps" type="int" value="30" />
+      <param name="frame" type="string" value="webcam" />
+      <param name="device" type="string" value="/dev/video0" />
+      <param name="exposureValue" type="int" value="1" />
+      <param name="cameraLeft_info_url" type="string" value="file:/${ROS_HOME}/camera_info/cameraLeft.yaml" />
+      <param name="cameraRight_info_url" type="string" value="file:/${ROS_HOME}/camera_info/cameraRight.yaml" />
+     </node>
+
+	<node pkg="orb_slam2_ros" type="Stereo" name="slam" args="$(find orb_slam2_lib)/Vocabulary/ORBvoc.txt $(find orb_slam2_ros)/settings/taracali_orb.yaml true" output="screen">
+		
+	</node>
+    </launch>

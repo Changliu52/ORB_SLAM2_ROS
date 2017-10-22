@@ -1,5 +1,5 @@
 <package>
-  <name>orb_slam2</name>
+  <name>orb_slam2_ros</name>
   <description>ORB_SLAM2</description>
   <version>0.0.0</version>
   <author>Raul Mur-Artal</author>
