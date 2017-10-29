@@ -14,4 +14,9 @@
 	<node pkg="orb_slam2" type="Stereo" name="slam" args="$(find orb_slam2_lib)/Vocabulary/ORBvoc.txt $(find orb_slam2)/settings/taracali_orb.yaml true" output="screen">
 		
 	</node>
+
+	<node pkg="tf2_ros" type="static_transform_publisher" name="ORB_base_link_to_orb_slam2_world" args="0 0 0 0 0 4.7124 ORB_base_link orb_slam2/world" />
+	<node pkg="tf2_ros" type="static_transform_publisher" name="ORB_base_link_to_orb_slam2_map" args="0 0 0 0 0 0 ORB_base_link /orb_slam2/map" />
+
+	
     </launch>
